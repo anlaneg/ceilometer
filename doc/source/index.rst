@@ -13,9 +13,9 @@
       License for the specific language governing permissions and limitations
       under the License.
 
-==================================================
-Welcome to the Ceilometer developer documentation!
-==================================================
+======================================
+Welcome to Ceilometer's documentation!
+======================================
 
 The :term:`Ceilometer` project is a data collection service that provides the
 ability to normalise and transform data across all current OpenStack core
@@ -34,25 +34,10 @@ Overview
 .. toctree::
    :maxdepth: 2
 
-   overview
-   architecture
-   measurements
-   events
-   webapi/index
-
-Developer Documentation
-=======================
-
-.. toctree::
-   :maxdepth: 2
-
    install/index
-   configuration
-   plugins
-   new_meters
-   testing
-   contributing
-   gmr
+   contributor/index
+   admin/index
+   configuration/index
 
 Appendix
 ========

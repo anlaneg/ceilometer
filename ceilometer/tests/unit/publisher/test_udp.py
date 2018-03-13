@@ -20,7 +20,6 @@ import socket
 
 import mock
 import msgpack
-from oslo_config import fixture as fixture_config
 from oslo_utils import netutils
 from oslotest import base
 
@@ -111,8 +110,7 @@ class TestUDPPublisher(base.BaseTestCase):
 
     def setUp(self):
         super(TestUDPPublisher, self).setUp()
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.CONF.publisher.telemetry_secret = 'not-so-secret'
 
     def _check_udp_socket(self, url, expected_addr_family):
@@ -169,8 +167,7 @@ class TestUDPPublisher(base.BaseTestCase):
             sent_counters.append(counter)
 
             # Check destination
-            self.assertEqual(('somehost',
-                              self.CONF.collector.udp_port), dest)
+            self.assertEqual(('somehost', 4952), dest)
 
         # Check that counters are equal
         def sort_func(counter):

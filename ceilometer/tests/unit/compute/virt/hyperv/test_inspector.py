@@ -19,7 +19,6 @@ import sys
 
 import mock
 from os_win import exceptions as os_win_exc
-from oslo_config import fixture as fixture_config
 from oslo_utils import units
 from oslotest import base
 
@@ -35,8 +34,7 @@ class TestHyperVInspection(base.BaseTestCase):
                        '_compute_host_max_cpu_clock')
     def setUp(self, mock_compute_host_cpu_clock):
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
-        self._inspector = hyperv_inspector.HyperVInspector(self.CONF)
+        self._inspector = hyperv_inspector.HyperVInspector(conf)
         self._inspector._utils = mock.MagicMock()
 
         super(TestHyperVInspection, self).setUp()
@@ -58,6 +56,27 @@ class TestHyperVInspection(base.BaseTestCase):
             os_win_exc.NotFound(resource='foofoo'))
         self.assertRaises(virt_inspector.InstanceNotFoundException,
                           self._inspector.inspect_instance,
+                          mock.sentinel.instance, None)
+
+        def _yield_consumer(generator_method, *args, **kwargs):
+            list(generator_method(*args, **kwargs))
+
+        self._inspector._utils.get_vnic_metrics.side_effect = (
+            os_win_exc.OSWinException)
+        self.assertRaises(virt_inspector.InspectorException,
+                          _yield_consumer, self._inspector.inspect_vnics,
+                          mock.sentinel.instance, None)
+
+        self._inspector._utils.get_vnic_metrics.side_effect = (
+            os_win_exc.HyperVException)
+        self.assertRaises(virt_inspector.InspectorException,
+                          _yield_consumer, self._inspector.inspect_vnics,
+                          mock.sentinel.instance, None)
+
+        self._inspector._utils.get_vnic_metrics.side_effect = (
+            os_win_exc.NotFound(resource='foofoo'))
+        self.assertRaises(virt_inspector.InstanceNotFoundException,
+                          _yield_consumer, self._inspector.inspect_vnics,
                           mock.sentinel.instance, None)
 
     def test_assert_original_traceback_maintained(self):

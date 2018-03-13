@@ -12,10 +12,15 @@
 # under the License.
 import datetime
 
+import fixtures
 import iso8601
 import mock
-from oslo_config import fixture as fixture_config
-from oslotest import mockpatch
+import testtools
+
+try:
+    import libvirt
+except ImportError:
+    libvirt = None
 
 from ceilometer.compute import discovery
 from ceilometer.compute.pollsters import util
@@ -59,6 +64,21 @@ LIBVIRT_DESC_XML = """
 </domain>
 """
 
+LIBVIRT_MANUAL_INSTANCE_DESC_XML = """
+<domain type='kvm' id='1'>
+  <name>Manual-instance-00000001</name>
+  <uuid>5e637d0d-8c0e-441a-a11a-a9dc95aed84e</uuid>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-xenial'>hvm</type>
+    <kernel>/opt/instances/5e637d0d-8c0e-441a-a11a-a9dc95aed84e/kernel</kernel>
+    <initrd>/opt/instances/5e637d0d-8c0e-441a-a11a-a9dc95aed84e/ramdisk</initrd>
+    <cmdline>root=/dev/vda console=tty0 console=ttyS0</cmdline>
+    <boot dev='hd'/>
+    <smbios mode='sysinfo'/>
+  </os>
+</domain>
+"""
+
 
 class FakeDomain(object):
     def state(self):
@@ -80,6 +100,33 @@ class FakeDomain(object):
 class FakeConn(object):
     def listAllDomains(self):
         return [FakeDomain()]
+
+
+class FakeManualInstanceDomain(object):
+    def state(self):
+        return [1, 2]
+
+    def name(self):
+        return "Manual-instance-00000001"
+
+    def UUIDString(self):
+        return "5e637d0d-8c0e-441a-a11a-a9dc95aed84e"
+
+    def XMLDesc(self):
+        return LIBVIRT_MANUAL_INSTANCE_DESC_XML
+
+    def metadata(self, flags, url):
+        # Note(xiexianbin): vm not create by nova-compute don't have metadata
+        # elements like: '<nova:instance
+        #  xmlns:nova="http://openstack.org/xmlns/libvirt/nova/1.0">'
+        # When invoke get metadata method, raise libvirtError.
+        raise libvirt.libvirtError(
+            "metadata not found: Requested metadata element is not present")
+
+
+class FakeManualInstanceConn(object):
+    def listAllDomains(self):
+        return [FakeManualInstanceDomain()]
 
 
 class TestDiscovery(base.BaseTestCase):
@@ -110,19 +157,18 @@ class TestDiscovery(base.BaseTestCase):
         # the tests
         self.client = mock.MagicMock()
         self.client.instance_get_all_by_host.return_value = [self.instance]
-        patch_client = mockpatch.Patch('ceilometer.nova_client.Client',
-                                       return_value=self.client)
+        patch_client = fixtures.MockPatch('ceilometer.nova_client.Client',
+                                          return_value=self.client)
         self.useFixture(patch_client)
 
         self.utc_now = mock.MagicMock(
             return_value=datetime.datetime(2016, 1, 1,
                                            tzinfo=iso8601.iso8601.UTC))
-        patch_timeutils = mockpatch.Patch('oslo_utils.timeutils.utcnow',
-                                          self.utc_now)
+        patch_timeutils = fixtures.MockPatch('oslo_utils.timeutils.utcnow',
+                                             self.utc_now)
         self.useFixture(patch_timeutils)
 
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.CONF.set_override('host', 'test')
 
     def test_normal_discovery(self):
@@ -238,3 +284,16 @@ class TestDiscovery(base.BaseTestCase):
                           mock.call('test', None)]
         self.assertEqual(expected_calls,
                          self.client.instance_get_all_by_host.call_args_list)
+
+    @testtools.skipUnless(libvirt, "libvirt not available")
+    @mock.patch.object(utils, "libvirt")
+    @mock.patch.object(discovery, "libvirt")
+    def test_discovery_with_libvirt_error(self, libvirt, libvirt2):
+        self.CONF.set_override("instance_discovery_method",
+                               "libvirt_metadata",
+                               group="compute")
+        libvirt.VIR_DOMAIN_METADATA_ELEMENT = 2
+        libvirt2.openReadOnly.return_value = FakeManualInstanceConn()
+        dsc = discovery.InstanceDiscovery(self.CONF)
+        resources = dsc.discover(mock.MagicMock())
+        self.assertEqual(0, len(resources))

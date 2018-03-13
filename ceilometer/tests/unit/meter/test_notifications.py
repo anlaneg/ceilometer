@@ -13,16 +13,14 @@
 """Tests for ceilometer.meter.notifications
 """
 import copy
+import fixtures
 import mock
-import os
 import six
 import yaml
 
-from oslo_config import fixture as fixture_config
 from oslo_utils import encodeutils
 from oslo_utils import fileutils
 
-import ceilometer
 from ceilometer import declarative
 from ceilometer.meter import notifications
 from ceilometer import service as ceilometer_service
@@ -30,7 +28,8 @@ from ceilometer.tests import base as test
 
 NOTIFICATION = {
     'event_type': u'test.create',
-    'timestamp': u'2015-06-1909: 19: 35.786893',
+    'metadata': {'timestamp': u'2015-06-19T09:19:35.786893',
+                 'message_id': u'939823de-c242-45a2-a399-083f4d6a8c3e'},
     'payload': {u'user_id': u'e1d870e51c7340cb9d555b15cbfcaec2',
                 u'resource_id': u'bea70e51c7340cb9d555b15cbfcaec23',
                 u'timestamp': u'2015-06-19T09:19:35.785330',
@@ -42,16 +41,16 @@ NOTIFICATION = {
                 u'volume': 1.0,
                 u'project_id': u'30be1fc9a03c4e94ab05c403a8a377f2',
                 },
-    u'_context_tenant': u'30be1fc9a03c4e94ab05c403a8a377f2',
-    u'_context_request_id': u'req-da91b4bf-d2b5-43ae-8b66-c7752e72726d',
-    u'_context_user': u'e1d870e51c7340cb9d555b15cbfcaec2',
-    'message_id': u'939823de-c242-45a2-a399-083f4d6a8c3e',
+    'ctxt': {u'tenant': u'30be1fc9a03c4e94ab05c403a8a377f2',
+             u'request_id': u'req-da91b4bf-d2b5-43ae-8b66-c7752e72726d',
+             u'user': u'e1d870e51c7340cb9d555b15cbfcaec2'},
     'publisher_id': "foo123"
 }
 
 USER_META = {
     'event_type': u'test.create',
-    'timestamp': u'2015-06-1909: 19: 35.786893',
+    'metadata': {'timestamp': u'2015-06-19T09:19:35.786893',
+                 'message_id': u'939823de-c242-45a2-a399-083f4d6a8c3e'},
     'payload': {u'user_id': u'e1d870e51c7340cb9d555b15cbfcaec2',
                 u'resource_id': u'bea70e51c7340cb9d555b15cbfcaec23',
                 u'timestamp': u'2015-06-19T09:19:35.785330',
@@ -64,39 +63,37 @@ USER_META = {
                 u'project_id': u'30be1fc9a03c4e94ab05c403a8a377f2',
                 u'metadata': {u'metering.xyz': u'abc', u'ignore': u'this'},
                 },
-    u'_context_tenant': u'30be1fc9a03c4e94ab05c403a8a377f2',
-    u'_context_request_id': u'req-da91b4bf-d2b5-43ae-8b66-c7752e72726d',
-    u'_context_user': u'e1d870e51c7340cb9d555b15cbfcaec2',
-    'message_id': u'939823de-c242-45a2-a399-083f4d6a8c3e',
+    'ctxt': {u'tenant': u'30be1fc9a03c4e94ab05c403a8a377f2',
+             u'request_id': u'req-da91b4bf-d2b5-43ae-8b66-c7752e72726d',
+             u'user': u'e1d870e51c7340cb9d555b15cbfcaec2'},
     'publisher_id': "foo123"
 }
 
 MIDDLEWARE_EVENT = {
-    u'_context_request_id': u'req-a8bfa89b-d28b-4b95-9e4b-7d7875275650',
-    u'_context_quota_class': None,
+    u'ctxt': {u'request_id': u'req-a8bfa89b-d28b-4b95-9e4b-7d7875275650',
+              u'quota_class': None,
+              u'service_catalog': [],
+              u'auth_token': None,
+              u'user_id': None,
+              u'is_admin': True,
+              u'user': None,
+              u'remote_address': None,
+              u'roles': [],
+              u'timestamp': u'2013-07-29T06:51:34.348091',
+              u'project_name': None,
+              u'read_deleted': u'no',
+              u'tenant': None,
+              u'instance_lock_checked': False,
+              u'project_id': None,
+              u'user_name': None},
     u'event_type': u'objectstore.http.request',
-    u'_context_service_catalog': [],
-    u'_context_auth_token': None,
-    u'_context_user_id': None,
-    u'priority': u'INFO',
-    u'_context_is_admin': True,
-    u'_context_user': None,
     u'publisher_id': u'ceilometermiddleware',
-    u'message_id': u'6eccedba-120e-4db8-9735-2ad5f061e5ee',
-    u'_context_remote_address': None,
-    u'_context_roles': [],
-    u'timestamp': u'2013-07-29 06:51:34.474815',
-    u'_context_timestamp': u'2013-07-29T06:51:34.348091',
-    u'_unique_id': u'0ee26117077648e18d88ac76e28a72e2',
-    u'_context_project_name': None,
-    u'_context_read_deleted': u'no',
-    u'_context_tenant': None,
-    u'_context_instance_lock_checked': False,
-    u'_context_project_id': None,
-    u'_context_user_name': None,
+    u'metadata': {u'message_id': u'6eccedba-120e-4db8-9735-2ad5f061e5ee',
+                  u'timestamp': u'2013-07-29T06:51:34.474815+00:00',
+                  u'_unique_id': u'0ee26117077648e18d88ac76e28a72e2'},
     u'payload': {
         'typeURI': 'http: //schemas.dmtf.org/cloud/audit/1.0/event',
-        'eventTime': '2015-01-30T16: 38: 43.233621',
+        'eventTime': '2013-07-29T06:51:34.474815+00:00',
         'target': {
             'action': 'get',
             'typeURI': 'service/storage/object',
@@ -142,12 +139,7 @@ MIDDLEWARE_EVENT = {
 }
 
 FULL_MULTI_MSG = {
-    u'_context_domain': None,
-    u'_context_request_id': u'req-da91b4bf-d2b5-43ae-8b66-c7752e72726d',
     'event_type': u'full.sample',
-    'timestamp': u'2015-06-1909: 19: 35.786893',
-    u'_context_auth_token': None,
-    u'_context_read_only': False,
     'payload': [{
                 u'counter_name': u'instance1',
                 u'user_id': u'user1',
@@ -166,26 +158,25 @@ FULL_MULTI_MSG = {
                 u'project_id': u'proj2',
                 u'counter_type': u'delta'
                 }],
-    u'_context_resource_uuid': None,
-    u'_context_user_identity': u'fake_user_identity---',
-    u'_context_show_deleted': False,
-    u'_context_tenant': u'30be1fc9a03c4e94ab05c403a8a377f2',
-    'priority': 'info',
-    u'_context_is_admin': True,
-    u'_context_project_domain': None,
-    u'_context_user': u'e1d870e51c7340cb9d555b15cbfcaec2',
-    u'_context_user_domain': None,
+    u'ctxt': {u'domain': None,
+              u'request_id': u'req-da91b4bf-d2b5-43ae-8b66-c7752e72726d',
+              u'auth_token': None,
+              u'read_only': False,
+              u'resource_uuid': None,
+              u'user_identity': u'fake_user_identity---',
+              u'show_deleted': False,
+              u'tenant': u'30be1fc9a03c4e94ab05c403a8a377f2',
+              u'is_admin': True,
+              u'project_domain': None,
+              u'user': u'e1d870e51c7340cb9d555b15cbfcaec2',
+              u'user_domain': None},
     'publisher_id': u'ceilometer.api',
-    'message_id': u'939823de-c242-45a2-a399-083f4d6a8c3e'
+    'metadata': {'message_id': u'939823de-c242-45a2-a399-083f4d6a8c3e',
+                 'timestamp': u'2015-06-19T09:19:35.786893'},
 }
 
 METRICS_UPDATE = {
-    u'_context_request_id': u'req-a8bfa89b-d28b-4b95-9e4b-7d7875275650',
-    u'_context_quota_class': None,
     u'event_type': u'compute.metrics.update',
-    u'_context_service_catalog': [],
-    u'_context_auth_token': None,
-    u'_context_user_id': None,
     u'payload': {
         u'metrics': [
             {'timestamp': u'2013-07-29T06:51:34.472416',
@@ -221,22 +212,26 @@ METRICS_UPDATE = {
         u'nodename': u'tianst.sh.intel.com',
         u'host': u'tianst',
         u'host_id': u'10.0.1.1'},
-    u'priority': u'INFO',
-    u'_context_is_admin': True,
-    u'_context_user': None,
     u'publisher_id': u'compute.tianst.sh.intel.com',
-    u'message_id': u'6eccedba-120e-4db8-9735-2ad5f061e5ee',
-    u'_context_remote_address': None,
-    u'_context_roles': [],
-    u'timestamp': u'2013-07-29 06:51:34.474815',
-    u'_context_timestamp': u'2013-07-29T06:51:34.348091',
-    u'_unique_id': u'0ee26117077648e18d88ac76e28a72e2',
-    u'_context_project_name': None,
-    u'_context_read_deleted': u'no',
-    u'_context_tenant': None,
-    u'_context_instance_lock_checked': False,
-    u'_context_project_id': None,
-    u'_context_user_name': None
+    u'metadata': {u'message_id': u'6eccedba-120e-4db8-9735-2ad5f061e5ee',
+                  u'timestamp': u'2013-07-29 06:51:34.474815',
+                  u'_unique_id': u'0ee26117077648e18d88ac76e28a72e2'},
+    u'ctxt': {u'request_id': u'req-a8bfa89b-d28b-4b95-9e4b-7d7875275650',
+              u'quota_class': None,
+              u'service_catalog': [],
+              u'auth_token': None,
+              u'user_id': None,
+              u'is_admin': True,
+              u'user': None,
+              u'remote_address': None,
+              u'roles': [],
+              u'timestamp': u'2013-07-29T06:51:34.348091',
+              u'project_name': None,
+              u'read_deleted': u'no',
+              u'tenant': None,
+              u'instance_lock_checked': False,
+              u'project_id': None,
+              u'user_name': None}
 }
 
 
@@ -284,32 +279,25 @@ class TestMeterProcessing(test.BaseTestCase):
 
     def setUp(self):
         super(TestMeterProcessing, self).setUp()
-        conf = ceilometer_service.prepare_service(argv=[], config_files=[])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = ceilometer_service.prepare_service([], [])
+        self.path = self.useFixture(fixtures.TempDir()).path
         self.handler = notifications.ProcessMeterNotifications(
-            mock.Mock(conf=self.CONF))
+            self.CONF, mock.Mock())
 
-    def test_fallback_meter_path(self):
-        self.CONF.set_override('meter_definitions_cfg_file',
-                               '/not/existing/path', group='meter')
-        with mock.patch('ceilometer.declarative.open',
-                        mock.mock_open(read_data='---\nmetric: []'),
-                        create=True) as mock_open:
-            self.handler._load_definitions()
+    def _load_meter_def_file(self, cfgs=None):
+        self.CONF.set_override('meter_definitions_dirs',
+                               [self.path], group='meter')
+        cfgs = cfgs or []
+        if not isinstance(cfgs, list):
+            cfgs = [cfgs]
+        meter_cfg_files = list()
+        for cfg in cfgs:
             if six.PY3:
-                path = os.path.dirname(ceilometer.__file__)
-            else:
-                path = "ceilometer"
-            mock_open.assert_called_with(path + "/meter/data/meters.yaml")
-
-    def _load_meter_def_file(self, cfg):
-        if six.PY3:
-            cfg = cfg.encode('utf-8')
-        meter_cfg_file = fileutils.write_to_tempfile(content=cfg,
-                                                     prefix="meters",
-                                                     suffix="yaml")
-        self.CONF.set_override('meter_definitions_cfg_file',
-                               meter_cfg_file, group='meter')
+                cfg = cfg.encode('utf-8')
+            meter_cfg_files.append(fileutils.write_to_tempfile(content=cfg,
+                                                               path=self.path,
+                                                               prefix="meters",
+                                                               suffix=".yaml"))
         self.handler.definitions = self.handler._load_definitions()
 
     @mock.patch('ceilometer.meter.notifications.LOG')
@@ -349,7 +337,7 @@ class TestMeterProcessing(test.BaseTestCase):
                              resource_id="$.payload.resource_id",
                              project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('test1', s1['name'])
@@ -374,7 +362,7 @@ class TestMeterProcessing(test.BaseTestCase):
                              resource_id="$.payload.resource_id",
                              project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        data = list(self.handler.process_notification(NOTIFICATION))
+        data = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(2, len(data))
         expected_names = ['test1', 'test2']
         for s in data:
@@ -390,7 +378,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         resource_id="$.payload.resource_id",
                         project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(0, len(c))
 
     def test_regex_match_meter(self):
@@ -403,7 +391,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         resource_id="$.payload.resource_id",
                         project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(1, len(c))
 
     def test_default_timestamp(self):
@@ -419,10 +407,11 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.initiator.project_id",
                         multi="name")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(event))
+        c = list(self.handler.build_sample(event))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
-        self.assertEqual(MIDDLEWARE_EVENT['timestamp'], s1['timestamp'])
+        self.assertEqual(MIDDLEWARE_EVENT['metadata']['timestamp'],
+                         s1['timestamp'])
 
     def test_custom_timestamp(self):
         event = copy.deepcopy(MIDDLEWARE_EVENT)
@@ -438,7 +427,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         multi="name",
                         timestamp='$.payload.eventTime')]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(event))
+        c = list(self.handler.build_sample(event))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual(MIDDLEWARE_EVENT['payload']['eventTime'],
@@ -456,11 +445,11 @@ class TestMeterProcessing(test.BaseTestCase):
                         timestamp="$.payload.metrics"
                                   "[?(@.name='cpu.frequency')].timestamp")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(METRICS_UPDATE))
+        c = list(self.handler.build_sample(METRICS_UPDATE))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('compute.node.cpu.frequency', s1['name'])
-        self.assertEqual("2013-07-29T06:51:34.472416", s1['timestamp'])
+        self.assertEqual("2013-07-29T06:51:34.472416+00:00", s1['timestamp'])
 
     def test_default_metadata(self):
         cfg = yaml.dump(
@@ -472,7 +461,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         resource_id="$.payload.resource_id",
                         project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         meta = NOTIFICATION['payload'].copy()
@@ -492,7 +481,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         resource_id="$.payload.resource_id",
                         project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual(5.0, s1['volume'])
@@ -509,7 +498,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         metadata={'proj': '$.payload.project_id',
                                   'dict': '$.payload.resource_metadata'})]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         meta = {'proj': s1['project_id'],
@@ -527,7 +516,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.project_id",
                         user_metadata="$.payload.metadata",)]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(USER_META))
+        c = list(self.handler.build_sample(USER_META))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         meta = {'user_metadata': {'xyz': 'abc'}}
@@ -545,7 +534,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         user_metadata="$.payload.metadata",
                         metadata={'proj': '$.payload.project_id'})]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(USER_META))
+        c = list(self.handler.build_sample(USER_META))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         meta = {'user_metadata': {'xyz': 'abc'}, 'proj': s1['project_id']}
@@ -568,7 +557,7 @@ class TestMeterProcessing(test.BaseTestCase):
                              resource_id="$.payload.resource_id",
                              project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(2, len(c))
 
     def test_multi_meter_payload(self):
@@ -582,7 +571,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.initiator.project_id",
                         lookup=["name", "volume", "unit"])]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(MIDDLEWARE_EVENT))
+        c = list(self.handler.build_sample(MIDDLEWARE_EVENT))
         self.assertEqual(2, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('storage.objects.outgoing.bytes', s1['name'])
@@ -606,7 +595,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.initiator.project_id",
                         lookup=["name", "unit"])]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(event))
+        c = list(self.handler.build_sample(event))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('storage.objects.outgoing.bytes', s1['name'])
@@ -626,7 +615,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.initiator.project_id",
                         lookup="name")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(event))
+        c = list(self.handler.build_sample(event))
         self.assertEqual(0, len(c))
 
     def test_multi_meter_payload_all_multi(self):
@@ -642,7 +631,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         lookup=['name', 'type', 'unit', 'volume',
                                 'resource_id', 'project_id', 'user_id'])]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(FULL_MULTI_MSG))
+        c = list(self.handler.build_sample(FULL_MULTI_MSG))
         self.assertEqual(2, len(c))
         msg = FULL_MULTI_MSG['payload']
         for idx, val in enumerate(c):
@@ -670,7 +659,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.initiator.project_id",
                         lookup=["name", "unit", "volume"])]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(event))
+        c = list(self.handler.build_sample(event))
         self.assertEqual(0, len(c))
         LOG.warning.assert_called_with('Only 0 fetched meters contain '
                                        '"volume" field instead of 2.')
@@ -689,7 +678,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         project_id="$.payload.initiator.project_id",
                         lookup=["name", "unit", "volume"])]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(event))
+        c = list(self.handler.build_sample(event))
         self.assertEqual(0, len(c))
         LOG.warning.assert_called_with('Only 1 fetched meters contain '
                                        '"volume" field instead of 2.')
@@ -706,7 +695,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         resource_id="$.payload.host + '_'"
                                     " + $.payload.nodename")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(METRICS_UPDATE))
+        c = list(self.handler.build_sample(METRICS_UPDATE))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('compute.node.cpu.percent', s1['name'])
@@ -725,7 +714,7 @@ class TestMeterProcessing(test.BaseTestCase):
                         resource_id="$.payload.host + '_'"
                                     " + $.payload.nodename")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(METRICS_UPDATE))
+        c = list(self.handler.build_sample(METRICS_UPDATE))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('compute.node.cpu.frequency', s1['name'])
@@ -743,7 +732,7 @@ class TestMeterProcessing(test.BaseTestCase):
                                ".value",
                         resource_id="'prefix-' + $.payload.nodename")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(METRICS_UPDATE))
+        c = list(self.handler.build_sample(METRICS_UPDATE))
         self.assertEqual(1, len(c))
         s1 = c[0].as_dict()
         self.assertEqual('compute.node.cpu.frequency', s1['name'])
@@ -768,5 +757,131 @@ class TestMeterProcessing(test.BaseTestCase):
                              resource_id="$.payload.resource_id",
                              project_id="$.payload.project_id")]})
         self._load_meter_def_file(cfg)
-        c = list(self.handler.process_notification(NOTIFICATION))
+        c = list(self.handler.build_sample(NOTIFICATION))
         self.assertEqual(1, len(c))
+
+    def test_multi_files_multi_meters(self):
+        cfg1 = yaml.dump(
+            {'metric': [dict(name="test1",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id")]})
+        cfg2 = yaml.dump(
+            {'metric': [dict(name="test2",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id")]})
+        self._load_meter_def_file([cfg1, cfg2])
+        data = list(self.handler.build_sample(NOTIFICATION))
+        self.assertEqual(2, len(data))
+        expected_names = ['test1', 'test2']
+        for s in data:
+            self.assertIn(s.as_dict()['name'], expected_names)
+
+    def test_multi_files_duplicate_meter(self):
+        cfg1 = yaml.dump(
+            {'metric': [dict(name="test",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id")]})
+        cfg2 = yaml.dump(
+            {'metric': [dict(name="test",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id")]})
+        self._load_meter_def_file([cfg1, cfg2])
+        data = list(self.handler.build_sample(NOTIFICATION))
+        self.assertEqual(1, len(data))
+        self.assertEqual(data[0].as_dict()['name'], 'test')
+
+    def test_multi_files_empty_payload(self):
+        event = copy.deepcopy(MIDDLEWARE_EVENT)
+        del event['payload']['measurements']
+        cfg1 = yaml.dump(
+            {'metric': [dict(name="$.payload.measurements.[*].metric.[*].name",
+                             event_type="objectstore.http.request",
+                             type="delta",
+                             unit="$.payload.measurements.[*].metric.[*].unit",
+                             volume="$.payload.measurements.[*].result",
+                             resource_id="$.payload.target_id",
+                             project_id="$.payload.initiator.project_id",
+                             lookup="name")]})
+        cfg2 = yaml.dump(
+            {'metric': [dict(name="$.payload.measurements.[*].metric.[*].name",
+                             event_type="objectstore.http.request",
+                             type="delta",
+                             unit="$.payload.measurements.[*].metric.[*].unit",
+                             volume="$.payload.measurements.[*].result",
+                             resource_id="$.payload.target_id",
+                             project_id="$.payload.initiator.project_id",
+                             lookup="name")]})
+        self._load_meter_def_file([cfg1, cfg2])
+        data = list(self.handler.build_sample(event))
+        self.assertEqual(0, len(data))
+
+    def test_multi_files_unmatched_meter(self):
+        cfg1 = yaml.dump(
+            {'metric': [dict(name="test1",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id")]})
+        cfg2 = yaml.dump(
+            {'metric': [dict(name="test2",
+                        event_type="test.update",
+                        type="delta",
+                        unit="B",
+                        volume="$.payload.volume",
+                        resource_id="$.payload.resource_id",
+                        project_id="$.payload.project_id")]})
+        self._load_meter_def_file([cfg1, cfg2])
+        data = list(self.handler.build_sample(NOTIFICATION))
+        self.assertEqual(1, len(data))
+        self.assertEqual(data[0].as_dict()['name'], 'test1')
+
+    @mock.patch('ceilometer.meter.notifications.LOG')
+    def test_multi_files_bad_meter(self, LOG):
+        cfg1 = yaml.dump(
+            {'metric': [dict(name="test1",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id"),
+                        dict(name="bad_test",
+                             type="bad_type",
+                             event_type="bar.create",
+                             unit="foo", volume="bar",
+                             resource_id="bea70e51c7340cb9d555b15cbfcaec23")]})
+        cfg2 = yaml.dump(
+            {'metric': [dict(name="test2",
+                             event_type="test.create",
+                             type="delta",
+                             unit="B",
+                             volume="$.payload.volume",
+                             resource_id="$.payload.resource_id",
+                             project_id="$.payload.project_id")]})
+        self._load_meter_def_file([cfg1, cfg2])
+        data = list(self.handler.build_sample(NOTIFICATION))
+        self.assertEqual(2, len(data))
+        expected_names = ['test1', 'test2']
+        for s in data:
+            self.assertIn(s.as_dict()['name'], expected_names)
+        args, kwargs = LOG.error.call_args_list[0]
+        self.assertEqual("Error loading meter definition: %s", args[0])
+        self.assertTrue(args[1].endswith("Invalid type bad_type specified"))

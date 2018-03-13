@@ -16,9 +16,9 @@
 # under the License.
 import mock
 
-from ceilometer.agent import manager
 from ceilometer.compute.pollsters import disk
 from ceilometer.compute.virt import inspector as virt_inspector
+from ceilometer.polling import manager
 from ceilometer.tests.unit.compute.pollsters import base
 
 
@@ -45,7 +45,6 @@ class TestBaseDiskIO(base.TestPollsterBase):
             instances.append(instance)
         return instances
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def _check_get_samples(self, factory, name, expected_count=2):
         pollster = factory(self.CONF)
 
@@ -99,11 +98,15 @@ class TestDiskPollsters(TestBaseDiskIO):
         virt_inspector.DiskStats(device='vda1',
                                  read_bytes=1, read_requests=2,
                                  write_bytes=3, write_requests=4,
-                                 errors=-1),
+                                 errors=-1,
+                                 rd_total_times=100,
+                                 wr_total_times=200,),
         virt_inspector.DiskStats(device='vda2',
                                  read_bytes=2, read_requests=3,
                                  write_bytes=5, write_requests=7,
-                                 errors=-1),
+                                 errors=-1,
+                                 rd_total_times=300,
+                                 wr_total_times=400,),
     ]
 
     def setUp(self):
@@ -161,6 +164,24 @@ class TestDiskPollsters(TestBaseDiskIO):
         self._check_per_device_samples(disk.PerDeviceWriteBytesPollster,
                                        'disk.device.write.bytes', 5,
                                        'vda2')
+
+    def test_per_device_read_latency(self):
+        self._check_per_device_samples(
+            disk.PerDeviceDiskReadLatencyPollster,
+            'disk.device.read.latency', 100, 'vda1')
+
+        self._check_per_device_samples(
+            disk.PerDeviceDiskReadLatencyPollster,
+            'disk.device.read.latency', 300, 'vda2')
+
+    def test_per_device_write_latency(self):
+        self._check_per_device_samples(
+            disk.PerDeviceDiskWriteLatencyPollster,
+            'disk.device.write.latency', 200, 'vda1')
+
+        self._check_per_device_samples(
+            disk.PerDeviceDiskWriteLatencyPollster,
+            'disk.device.write.latency', 400, 'vda2')
 
 
 class TestDiskRatePollsters(TestBaseDiskIO):

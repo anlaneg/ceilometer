@@ -15,7 +15,8 @@
 
 import yaml
 
-from ceilometer import pipeline
+from ceilometer.pipeline import base
+from ceilometer.pipeline import sample as pipeline
 from ceilometer import sample
 from ceilometer.tests.unit import pipeline_base
 
@@ -122,9 +123,8 @@ class TestDecoupledPipeline(pipeline_base.BasePipelineTestCase):
             'publishers': ['new'],
         })
         self.pipeline_cfg['sources'][0]['sinks'].append('second_sink')
-        pipeline_manager = pipeline.PipelineManager(
-            self.CONF,
-            self.cfg2file(self.pipeline_cfg), self.transformer_manager)
+        self._build_and_set_new_pipeline()
+        pipeline_manager = pipeline.SamplePipelineManager(self.CONF)
         with pipeline_manager.publisher() as p:
             p([self.test_counter])
 
@@ -163,9 +163,8 @@ class TestDecoupledPipeline(pipeline_base.BasePipelineTestCase):
             'meters': ['b'],
             'sinks': ['test_sink']
         })
-        pipeline_manager = pipeline.PipelineManager(
-            self.CONF,
-            self.cfg2file(self.pipeline_cfg), self.transformer_manager)
+        self._build_and_set_new_pipeline()
+        pipeline_manager = pipeline.SamplePipelineManager(self.CONF)
         with pipeline_manager.publisher() as p:
             p([self.test_counter])
 
@@ -209,9 +208,9 @@ class TestDecoupledPipeline(pipeline_base.BasePipelineTestCase):
         pipeline_cfg = yaml.safe_load(data)
         for s in pipeline_cfg['sinks']:
             s['publishers'] = ['test://']
-        pipeline_manager = pipeline.PipelineManager(
-            self.CONF,
-            self.cfg2file(pipeline_cfg), self.transformer_manager)
+        name = self.cfg2file(pipeline_cfg)
+        self.CONF.set_override('pipeline_cfg_file', name)
+        pipeline_manager = pipeline.SamplePipelineManager(self.CONF)
         pipe = pipeline_manager.pipelines[index]
         self._do_test_rate_of_change_mapping(pipe, meters, units)
 
@@ -262,11 +261,9 @@ class TestDecoupledPipeline(pipeline_base.BasePipelineTestCase):
             'name': 'test_sink',
             'publishers': ['except'],
         })
-        self.assertRaises(pipeline.PipelineException,
-                          pipeline.PipelineManager,
-                          self.CONF,
-                          self.cfg2file(self.pipeline_cfg),
-                          self.transformer_manager)
+        self._build_and_set_new_pipeline()
+        self.assertRaises(base.PipelineException,
+                          pipeline.SamplePipelineManager, self.CONF)
 
     def test_duplicated_source_names(self):
         self.pipeline_cfg['sources'].append({
@@ -274,8 +271,6 @@ class TestDecoupledPipeline(pipeline_base.BasePipelineTestCase):
             'meters': ['a'],
             'sinks': ['test_sink']
         })
-        self.assertRaises(pipeline.PipelineException,
-                          pipeline.PipelineManager,
-                          self.CONF,
-                          self.cfg2file(self.pipeline_cfg),
-                          self.transformer_manager)
+        self._build_and_set_new_pipeline()
+        self.assertRaises(base.PipelineException,
+                          pipeline.SamplePipelineManager, self.CONF)

@@ -16,7 +16,6 @@
 
 import fixtures
 import mock
-from oslo_config import fixture as fixture_config
 from oslo_utils import units
 from oslotest import base
 
@@ -40,7 +39,6 @@ class TestLibvirtInspection(base.BaseTestCase):
     def setUp(self):
         super(TestLibvirtInspection, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
 
         self.instance = VMInstance()
         libvirt_inspector.libvirt = mock.Mock()
@@ -50,14 +48,16 @@ class TestLibvirtInspection(base.BaseTestCase):
         utils.libvirt = libvirt_inspector.libvirt
         with mock.patch('ceilometer.compute.virt.libvirt.utils.'
                         'refresh_libvirt_connection', return_value=None):
-            self.inspector = libvirt_inspector.LibvirtInspector(self.CONF)
+            self.inspector = libvirt_inspector.LibvirtInspector(conf)
 
     def test_inspect_instance_stats(self):
         domain = mock.Mock()
         domain.info.return_value = (0, 0, 0, 2, 999999)
         domain.memoryStats.return_value = {'available': 51200,
                                            'unused': 25600,
-                                           'rss': 30000}
+                                           'rss': 30000,
+                                           'swap_in': 5120,
+                                           'swap_out': 8192}
         conn = mock.Mock()
         conn.lookupByUUIDString.return_value = domain
         conn.domainListGetStats.return_value = [({}, {
@@ -84,6 +84,8 @@ class TestLibvirtInspection(base.BaseTestCase):
             self.assertEqual(90112, stats.cpu_l3_cache_usage)
             self.assertEqual(25600 / units.Ki, stats.memory_usage)
             self.assertEqual(30000 / units.Ki, stats.memory_resident)
+            self.assertEqual(5120 / units.Ki, stats.memory_swap_in)
+            self.assertEqual(8192 / units.Ki, stats.memory_swap_out)
             self.assertEqual(1892352, stats.memory_bandwidth_total)
             self.assertEqual(1802240, stats.memory_bandwidth_local)
             self.assertEqual(7259361, stats.cpu_cycles)
@@ -183,9 +185,9 @@ class TestLibvirtInspection(base.BaseTestCase):
         """
 
         interface_stats = {
-            'vnet0': (1, 2, 0, 0, 3, 4, 0, 0),
-            'vnet1': (5, 6, 0, 0, 7, 8, 0, 0),
-            'vnet2': (9, 10, 0, 0, 11, 12, 0, 0),
+            'vnet0': (1, 2, 21, 22, 3, 4, 23, 24),
+            'vnet1': (5, 6, 25, 26, 7, 8, 27, 28),
+            'vnet2': (9, 10, 29, 30, 11, 12, 31, 32),
         }
         interfaceStats = interface_stats.__getitem__
 
@@ -214,6 +216,10 @@ class TestLibvirtInspection(base.BaseTestCase):
             self.assertEqual(2, vnic0.rx_packets)
             self.assertEqual(3, vnic0.tx_bytes)
             self.assertEqual(4, vnic0.tx_packets)
+            self.assertEqual(21, vnic0.rx_errors)
+            self.assertEqual(22, vnic0.rx_drop)
+            self.assertEqual(23, vnic0.tx_errors)
+            self.assertEqual(24, vnic0.tx_drop)
 
             vnic1 = interfaces[1]
             self.assertEqual('vnet1', vnic1.name)
@@ -227,6 +233,10 @@ class TestLibvirtInspection(base.BaseTestCase):
             self.assertEqual(6, vnic1.rx_packets)
             self.assertEqual(7, vnic1.tx_bytes)
             self.assertEqual(8, vnic1.tx_packets)
+            self.assertEqual(25, vnic1.rx_errors)
+            self.assertEqual(26, vnic1.rx_drop)
+            self.assertEqual(27, vnic1.tx_errors)
+            self.assertEqual(28, vnic1.tx_drop)
 
             vnic2 = interfaces[2]
             self.assertEqual('vnet2', vnic2.name)
@@ -237,6 +247,10 @@ class TestLibvirtInspection(base.BaseTestCase):
             self.assertEqual(10, vnic2.rx_packets)
             self.assertEqual(11, vnic2.tx_bytes)
             self.assertEqual(12, vnic2.tx_packets)
+            self.assertEqual(29, vnic2.rx_errors)
+            self.assertEqual(30, vnic2.rx_drop)
+            self.assertEqual(31, vnic2.tx_errors)
+            self.assertEqual(32, vnic2.tx_drop)
 
     def test_inspect_vnics_with_domain_shutoff(self):
         domain = mock.Mock()
@@ -265,10 +279,19 @@ class TestLibvirtInspection(base.BaseTestCase):
                  </devices>
              </domain>
         """
+        blockStatsFlags = {'wr_total_times': 91752302267,
+                           'rd_operations': 6756,
+                           'flush_total_times': 1310427331,
+                           'rd_total_times': 29142253616,
+                           'rd_bytes': 171460096,
+                           'flush_operations': 746,
+                           'wr_operations': 1437,
+                           'wr_bytes': 13574656}
         domain = mock.Mock()
         domain.XMLDesc.return_value = dom_xml
         domain.info.return_value = (0, 0, 0, 2, 999999)
         domain.blockStats.return_value = (1, 2, 3, 4, -1)
+        domain.blockStatsFlags.return_value = blockStatsFlags
         conn = mock.Mock()
         conn.lookupByUUIDString.return_value = domain
 
@@ -282,6 +305,8 @@ class TestLibvirtInspection(base.BaseTestCase):
             self.assertEqual(2, disks[0].read_bytes)
             self.assertEqual(3, disks[0].write_requests)
             self.assertEqual(4, disks[0].write_bytes)
+            self.assertEqual(91752302267, disks[0].wr_total_times)
+            self.assertEqual(29142253616, disks[0].rd_total_times)
 
     def test_inspect_disks_with_domain_shutoff(self):
         domain = mock.Mock()
@@ -353,7 +378,7 @@ class TestLibvirtInspection(base.BaseTestCase):
         with mock.patch('ceilometer.compute.virt.libvirt.utils.'
                         'refresh_libvirt_connection', return_value=conn):
             disks = list(self.inspector.inspect_disk_info(self.instance, None))
-            self.assertEqual(0, len(disks))
+            self.assertEqual(1, len(disks))
 
     def test_inspect_disk_info_without_source_element(self):
         dom_xml = """
@@ -383,6 +408,44 @@ class TestLibvirtInspection(base.BaseTestCase):
             disks = list(self.inspector.inspect_disk_info(self.instance, None))
             self.assertEqual(0, len(disks))
 
+    def test_inspect_disks_without_source_element(self):
+        dom_xml = """
+             <domain type='kvm'>
+                 <devices>
+                    <disk type='file' device='cdrom'>
+                        <driver name='qemu' type='raw' cache='none'/>
+                        <backingStore/>
+                        <target dev='hdd' bus='ide' tray='open'/>
+                        <readonly/>
+                        <alias name='ide0-1-1'/>
+                        <address type='drive' controller='0' bus='1'
+                                 target='0' unit='1'/>
+                     </disk>
+                 </devices>
+             </domain>
+        """
+        blockStatsFlags = {'wr_total_times': 91752302267,
+                           'rd_operations': 6756,
+                           'flush_total_times': 1310427331,
+                           'rd_total_times': 29142253616,
+                           'rd_bytes': 171460096,
+                           'flush_operations': 746,
+                           'wr_operations': 1437,
+                           'wr_bytes': 13574656}
+        domain = mock.Mock()
+        domain.XMLDesc.return_value = dom_xml
+        domain.info.return_value = (0, 0, 0, 2, 999999)
+        domain.blockStats.return_value = (1, 2, 3, 4, -1)
+        domain.blockStatsFlags.return_value = blockStatsFlags
+        conn = mock.Mock()
+        conn.lookupByUUIDString.return_value = domain
+
+        with mock.patch('ceilometer.compute.virt.libvirt.utils.'
+                        'refresh_libvirt_connection', return_value=conn):
+            disks = list(self.inspector.inspect_disks(self.instance, None))
+
+            self.assertEqual(0, len(disks))
+
     def test_inspect_memory_usage_with_domain_shutoff(self):
         domain = mock.Mock()
         domain.info.return_value = (5, 0, 51200, 2, 999999)
@@ -408,6 +471,8 @@ class TestLibvirtInspection(base.BaseTestCase):
             stats = self.inspector.inspect_instance(self.instance, None)
             self.assertIsNone(stats.memory_usage)
             self.assertIsNone(stats.memory_resident)
+            self.assertIsNone(stats.memory_swap_in)
+            self.assertIsNone(stats.memory_swap_out)
 
     def test_inspect_perf_events_libvirt_less_than_2_3_0(self):
         domain = mock.Mock()
@@ -436,7 +501,6 @@ class TestLibvirtInspectionWithError(base.BaseTestCase):
     def setUp(self):
         super(TestLibvirtInspectionWithError, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
         self.useFixture(fixtures.MonkeyPatch(
             'ceilometer.compute.virt.libvirt.utils.'
             'refresh_libvirt_connection',
@@ -444,7 +508,7 @@ class TestLibvirtInspectionWithError(base.BaseTestCase):
         libvirt_inspector.libvirt = mock.Mock()
         libvirt_inspector.libvirt.libvirtError = FakeLibvirtError
         utils.libvirt = libvirt_inspector.libvirt
-        self.inspector = libvirt_inspector.LibvirtInspector(self.CONF)
+        self.inspector = libvirt_inspector.LibvirtInspector(conf)
 
     def test_inspect_unknown_error(self):
         self.assertRaises(virt_inspector.InspectorException,

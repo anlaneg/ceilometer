@@ -30,17 +30,11 @@ try:
 except ImportError:
     libvirt = None
 
-from ceilometer.agent import plugin_base
 from ceilometer.compute.virt.libvirt import utils as libvirt_utils
 from ceilometer import nova_client
+from ceilometer.polling import plugin_base
 
 OPTS = [
-    cfg.BoolOpt('workload_partitioning',
-                default=False,
-                deprecated_for_removal=True,
-                help='Enable work-load partitioning, allowing multiple '
-                     'compute agents to be run simultaneously. '
-                     '(replaced by instance_discovery_method)'),
     cfg.StrOpt('instance_discovery_method',
                default='libvirt_metadata',
                choices=['naive', 'workload_partitioning', 'libvirt_metadata'],
@@ -62,7 +56,9 @@ OPTS = [
                     "the instance list to poll will be updated based "
                     "on this option's interval. Measurements relating "
                     "to the instances will match intervals "
-                    "defined in pipeline. "),
+                    "defined in pipeline. This option is only used "
+                    "for agent polling to Nova API, so it will work only "
+                    "when 'instance_discovery_method' is set to 'naive'."),
     cfg.IntOpt('resource_cache_expiry',
                default=3600,
                min=0,
@@ -72,8 +68,8 @@ OPTS = [
                     "local cache by totally refreshing the local cache. "
                     "The minimum should be the value of the config option "
                     "of resource_update_interval. This option is only used "
-                    "for agent polling to Nova API, so it will works only "
-                    "when 'instance_discovery_method' was set to 'naive'.")
+                    "for agent polling to Nova API, so it will work only "
+                    "when 'instance_discovery_method' is set to 'naive'.")
 ]
 
 LOG = log.getLogger(__name__)
@@ -99,10 +95,6 @@ class InstanceDiscovery(plugin_base.DiscoveryBase):
         super(InstanceDiscovery, self).__init__(conf)
         if not self.method:
             self.method = conf.compute.instance_discovery_method
-
-            # For backward compatibility
-            if self.method == "naive" and conf.compute.workload_partitioning:
-                self.method = "workload_partitioning"
 
         self.nova_cli = nova_client.Client(conf)
         self.expiration_time = conf.compute.resource_update_interval
@@ -145,12 +137,21 @@ class InstanceDiscovery(plugin_base.DiscoveryBase):
     def discover_libvirt_polling(self, manager, param=None):
         instances = []
         for domain in self.connection.listAllDomains():
+            try:
+                xml_string = domain.metadata(
+                    libvirt.VIR_DOMAIN_METADATA_ELEMENT,
+                    "http://openstack.org/xmlns/libvirt/nova/1.0")
+            except libvirt.libvirtError as e:
+                if libvirt_utils.is_disconnection_exception(e):
+                    # Re-raise the exception so it's handled and retries
+                    raise
+                LOG.error(
+                    "Fail to get domain uuid %s metadata, libvirtError: %s",
+                    domain.UUIDString(), e.message)
+                continue
+
             full_xml = etree.fromstring(domain.XMLDesc())
             os_type_xml = full_xml.find("./os/type")
-
-            xml_string = domain.metadata(
-                libvirt.VIR_DOMAIN_METADATA_ELEMENT,
-                "http://openstack.org/xmlns/libvirt/nova/1.0")
             metadata_xml = etree.fromstring(xml_string)
 
             # TODO(sileht): We don't have the flavor ID here So the Gnocchi
@@ -161,42 +162,55 @@ class InstanceDiscovery(plugin_base.DiscoveryBase):
             # flavor. this is why nova doesn't put the id in the libvirt
             # metadata
 
-            # This implements
-            flavor_xml = metadata_xml.find("./flavor")
-            flavor = {
-                "id": self.get_flavor_id(flavor_xml.attrib["name"]),
-                "name": flavor_xml.attrib["name"],
-                "vcpus": self._safe_find_int(flavor_xml, "vcpus"),
-                "ram": self._safe_find_int(flavor_xml, "memory"),
-                "disk": self._safe_find_int(flavor_xml, "disk"),
-                "ephemeral": self._safe_find_int(flavor_xml, "ephemeral"),
-                "swap": self._safe_find_int(flavor_xml, "swap"),
-            }
+            try:
+                flavor_xml = metadata_xml.find(
+                    "./flavor")
+                user_id = metadata_xml.find(
+                    "./owner/user").attrib["uuid"]
+                project_id = metadata_xml.find(
+                    "./owner/project").attrib["uuid"]
+                instance_name = metadata_xml.find(
+                    "./name").text
+                instance_arch = os_type_xml.attrib["arch"]
+
+                flavor = {
+                    "id": self.get_flavor_id(flavor_xml.attrib["name"]),
+                    "name": flavor_xml.attrib["name"],
+                    "vcpus": self._safe_find_int(flavor_xml, "vcpus"),
+                    "ram": self._safe_find_int(flavor_xml, "memory"),
+                    "disk": self._safe_find_int(flavor_xml, "disk"),
+                    "ephemeral": self._safe_find_int(flavor_xml, "ephemeral"),
+                    "swap": self._safe_find_int(flavor_xml, "swap"),
+                }
+
+                # The image description is partial, but Gnocchi only care about
+                # the id, so we are fine
+                image_xml = metadata_xml.find("./root[@type='image']")
+                image = ({'id': image_xml.attrib['uuid']}
+                         if image_xml is not None else None)
+            except AttributeError as e:
+                LOG.error(
+                    "Fail to get domain uuid %s metadata: "
+                    "metadata was missing expected attributes",
+                    domain.UUIDString())
+                continue
+
             dom_state = domain.state()[0]
             vm_state = libvirt_utils.LIBVIRT_POWER_STATE.get(dom_state)
             status = libvirt_utils.LIBVIRT_STATUS.get(dom_state)
-
-            user_id = metadata_xml.find("./owner/user").attrib["uuid"]
-            project_id = metadata_xml.find("./owner/project").attrib["uuid"]
 
             # From:
             # https://github.com/openstack/nova/blob/852f40fd0c6e9d8878212ff3120556668023f1c4/nova/api/openstack/compute/views/servers.py#L214-L220
             host_id = hashlib.sha224(
                 (project_id + self.conf.host).encode('utf-8')).hexdigest()
 
-            # The image description is partial, but Gnocchi only care about the
-            # id, so we are fine
-            image_xml = metadata_xml.find("./root[@type='image']")
-            image = ({'id': image_xml.attrib['uuid']}
-                     if image_xml is not None else None)
-
             instance_data = {
                 "id": domain.UUIDString(),
-                "name": metadata_xml.find("./name").text,
+                "name": instance_name,
                 "flavor": flavor,
                 "image": image,
                 "os_type": os_type_xml.text,
-                "architecture": os_type_xml.attrib["arch"],
+                "architecture": instance_arch,
 
                 "OS-EXT-SRV-ATTR:instance_name": domain.name(),
                 "OS-EXT-SRV-ATTR:host": self.conf.host,
@@ -210,7 +224,7 @@ class InstanceDiscovery(plugin_base.DiscoveryBase):
 
                 # NOTE(sileht): Other fields that Ceilometer tracks
                 # where we can't get the value here, but their are
-                # retreived by notification
+                # retrieved by notification
                 "metadata": {},
                 # "OS-EXT-STS:task_state"
                 # 'reservation_id',

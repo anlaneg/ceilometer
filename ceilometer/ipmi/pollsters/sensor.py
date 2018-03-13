@@ -14,11 +14,11 @@
 
 from oslo_log import log
 
-from ceilometer.agent import plugin_base
 from ceilometer.i18n import _
 from ceilometer.ipmi.notifications import ironic as parser
 from ceilometer.ipmi.platform import exception as ipmiexcept
 from ceilometer.ipmi.platform import ipmi_sensor
+from ceilometer.polling import plugin_base
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
@@ -38,7 +38,8 @@ class SensorPollster(plugin_base.PollsterBase):
 
         # Do not load this extension if no IPMI support
         if not self.ipmi.ipmi_support:
-            raise plugin_base.ExtensionLoadError()
+            raise plugin_base.ExtensionLoadError(
+                "IPMITool not supported on host")
 
     @property
     def default_discovery(self):

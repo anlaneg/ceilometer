@@ -95,7 +95,7 @@ class Sample(object):
 
     def __init__(self, name, type, unit, volume, user_id, project_id,
                  resource_id, timestamp=None, resource_metadata=None,
-                 source=None, id=None):
+                 source=None, id=None, monotonic_time=None):
         self.name = name
         self.type = type
         self.unit = unit
@@ -107,6 +107,7 @@ class Sample(object):
         self.resource_metadata = resource_metadata or {}
         self.source = source or self.SOURCE_DEFAULT
         self.id = id or str(uuid.uuid1())
+        self.monotonic_time = monotonic_time
 
     def as_dict(self):
         return copy.copy(self.__dict__)
@@ -124,7 +125,8 @@ class Sample(object):
                         if isinstance(message['payload'], dict) else {})
             metadata['event_type'] = message['event_type']
             metadata['host'] = message['publisher_id']
-        ts = timestamp if timestamp else message['timestamp']
+        ts = timestamp if timestamp else message['metadata']['timestamp']
+        ts = timeutils.parse_isotime(ts).isoformat()  # add UTC if necessary
         return cls(name=name,
                    type=type,
                    volume=volume,
@@ -141,6 +143,14 @@ class Sample(object):
 
     def get_iso_timestamp(self):
         return timeutils.parse_isotime(self.timestamp)
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.__dict__ == other.__dict__
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 def setup(conf):

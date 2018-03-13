@@ -16,9 +16,9 @@
 
 import mock
 
-from ceilometer.agent import manager
 from ceilometer.compute.pollsters import net
 from ceilometer.compute.virt import inspector as virt_inspector
+from ceilometer.polling import manager
 from ceilometer.tests.unit.compute.pollsters import base
 
 
@@ -117,7 +117,6 @@ class TestNetPollster(base.TestPollsterBase):
 
         self.faux_instance = FauxInstance(**self.INSTANCE_PROPERTIES)
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def _check_get_samples(self, factory, expected):
         mgr = manager.AgentManager(0, self.CONF)
         pollster = factory(self.CONF)
@@ -226,7 +225,6 @@ class TestNetPollster(base.TestPollsterBase):
              ],
         )
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def test_metadata(self):
         factory = net.OutgoingBytesPollster
         pollster = factory(self.CONF)
@@ -284,7 +282,6 @@ class TestNetRatesPollster(base.TestPollsterBase):
         ]
         self.inspector.inspect_vnic_rates = mock.Mock(return_value=vnics)
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def _check_get_samples(self, factory, expected):
         mgr = manager.AgentManager(0, self.CONF)
         pollster = factory(self.CONF)

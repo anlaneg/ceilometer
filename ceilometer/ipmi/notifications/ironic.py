@@ -16,20 +16,12 @@
 notification events.
 """
 
-from oslo_config import cfg
 from oslo_log import log
-import oslo_messaging as messaging
 
-from ceilometer.agent import plugin_base
+from ceilometer.pipeline import sample as endpoint
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
-
-OPTS = [
-    cfg.StrOpt('ironic_exchange',
-               default='ironic',
-               help='Exchange name for Ironic notifications.'),
-]
 
 
 # Map unit name to SI
@@ -62,7 +54,7 @@ class InvalidSensorData(ValueError):
     pass
 
 
-class SensorNotification(plugin_base.NotificationBase):
+class SensorNotification(endpoint.SampleEndpoint):
     """A generic class for extracting samples from sensor data notifications.
 
     A notification message can contain multiple samples from multiple
@@ -76,12 +68,6 @@ class SensorNotification(plugin_base.NotificationBase):
     event_types = ['hardware.ipmi.*']
     metric = None
 
-    def get_targets(self, conf):
-        """oslo.messaging.TargetS for this plugin."""
-        return [messaging.Target(topic=topic,
-                                 exchange=conf.ironic_exchange)
-                for topic in self.get_notification_topics(conf)]
-
     def _get_sample(self, message):
         try:
             return (payload for _, payload
@@ -92,6 +78,9 @@ class SensorNotification(plugin_base.NotificationBase):
     @staticmethod
     def _package_payload(message, payload):
         # NOTE(chdent): How much of the payload should we keep?
+        # FIXME(gordc): ironic adds timestamp and event_type in its payload
+        # which we are using below. we should probably just use oslo.messaging
+        # values instead?
         payload['node'] = message['payload']['node_uuid']
         info = {'publisher_id': message['publisher_id'],
                 'timestamp': message['payload']['timestamp'],
@@ -101,7 +90,7 @@ class SensorNotification(plugin_base.NotificationBase):
                 'payload': payload}
         return info
 
-    def process_notification(self, message):
+    def build_sample(self, message):
         """Read and process a notification.
 
         The guts of a message are in dict value of a 'payload' key
@@ -145,7 +134,8 @@ class SensorNotification(plugin_base.NotificationBase):
                         resource_id=resource_id,
                         message=info,
                         user_id=info['user_id'],
-                        project_id=info['project_id'])
+                        project_id=info['project_id'],
+                        timestamp=info['timestamp'])
 
             except InvalidSensorData as exc:
                 LOG.warning(

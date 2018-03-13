@@ -20,8 +20,8 @@ from oslo_config import cfg
 from oslo_log import log
 import six.moves.urllib.parse as urlparse
 
-from ceilometer.agent import plugin_base
 from ceilometer import keystone_client
+from ceilometer.polling import plugin_base
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
@@ -69,7 +69,8 @@ class _Base(plugin_base.PollsterBase):
                 rgw_url = keystone_client.get_service_catalog(
                     ksclient).url_for(
                         service_type=conf.service_types.radosgw,
-                        interface=creds.interface)
+                        interface=creds.interface,
+                        region_name=creds.region_name)
                 _Base._ENDPOINT = urlparse.urljoin(rgw_url, '/admin')
             except exceptions.EndpointNotFound:
                 LOG.debug("Radosgw endpoint not found")

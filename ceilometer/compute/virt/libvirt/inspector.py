@@ -27,7 +27,7 @@ except ImportError:
 from ceilometer.compute.pollsters import util
 from ceilometer.compute.virt import inspector as virt_inspector
 from ceilometer.compute.virt.libvirt import utils as libvirt_utils
-from ceilometer.i18n import _LW, _
+from ceilometer.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -104,63 +104,51 @@ class LibvirtInspector(virt_inspector.Inspector):
                                                 parameters=params,
                                                 rx_bytes=dom_stats[0],
                                                 rx_packets=dom_stats[1],
-                                                rx_drop=dom_stats[2],
-                                                rx_errors=dom_stats[3],
+                                                rx_errors=dom_stats[2],
+                                                rx_drop=dom_stats[3],
                                                 tx_bytes=dom_stats[4],
                                                 tx_packets=dom_stats[5],
-                                                tx_drop=dom_stats[6],
-                                                tx_errors=dom_stats[7])
+                                                tx_errors=dom_stats[6],
+                                                tx_drop=dom_stats[7])
+
+    @staticmethod
+    def _get_disk_devices(domain):
+        tree = etree.fromstring(domain.XMLDesc(0))
+        return filter(bool, [target.get("dev") for target in
+                             tree.findall('devices/disk/target')
+                             if target.getparent().find('source') is not None])
 
     @libvirt_utils.retry_on_disconnect
     def inspect_disks(self, instance, duration):
         domain = self._get_domain_not_shut_off_or_raise(instance)
-
-        tree = etree.fromstring(domain.XMLDesc(0))
-        for device in filter(
-                bool,
-                [target.get("dev")
-                 for target in tree.findall('devices/disk/target')]):
+        for device in self._get_disk_devices(domain):
             block_stats = domain.blockStats(device)
-            yield virt_inspector.DiskStats(device=device,
-                                           read_requests=block_stats[0],
-                                           read_bytes=block_stats[1],
-                                           write_requests=block_stats[2],
-                                           write_bytes=block_stats[3],
-                                           errors=block_stats[4])
+            block_stats_flags = domain.blockStatsFlags(device, 0)
+            yield virt_inspector.DiskStats(
+                device=device,
+                read_requests=block_stats[0], read_bytes=block_stats[1],
+                write_requests=block_stats[2], write_bytes=block_stats[3],
+                errors=block_stats[4],
+                wr_total_times=block_stats_flags['wr_total_times'],
+                rd_total_times=block_stats_flags['rd_total_times'])
 
     @libvirt_utils.retry_on_disconnect
     def inspect_disk_info(self, instance, duration):
         domain = self._get_domain_not_shut_off_or_raise(instance)
-        tree = etree.fromstring(domain.XMLDesc(0))
-        for disk in tree.findall('devices/disk'):
-            disk_type = disk.get('type')
-            if disk_type:
-                if disk_type == 'network':
-                    LOG.warning(
-                        _LW('Inspection disk usage of network disk '
-                            '%(instance_uuid)s unsupported by libvirt') % {
-                            'instance_uuid': instance.id})
-                    continue
-                # NOTE(lhx): "cdrom" device associated to the configdrive
-                # no longer has a "source" element. Releated bug:
-                # https://bugs.launchpad.net/ceilometer/+bug/1622718
-                if disk.find('source') is None:
-                    continue
-                target = disk.find('target')
-                device = target.get('dev')
-                if device:
-                    block_info = domain.blockInfo(device)
-                    yield virt_inspector.DiskInfo(device=device,
-                                                  capacity=block_info[0],
-                                                  allocation=block_info[1],
-                                                  physical=block_info[2])
+        for device in self._get_disk_devices(domain):
+            block_info = domain.blockInfo(device)
+            yield virt_inspector.DiskInfo(device=device,
+                                          capacity=block_info[0],
+                                          allocation=block_info[1],
+                                          physical=block_info[2])
 
     @libvirt_utils.raise_nodata_if_unsupported
     @libvirt_utils.retry_on_disconnect
-    def inspect_instance(self, instance,  duration=None):
+    def inspect_instance(self, instance, duration=None):
         domain = self._get_domain_not_shut_off_or_raise(instance)
 
         memory_used = memory_resident = None
+        memory_swap_in = memory_swap_out = None
         memory_stats = domain.memoryStats()
         # Stat provided from libvirt is in KB, converting it to MB.
         if 'available' in memory_stats and 'unused' in memory_stats:
@@ -168,6 +156,9 @@ class LibvirtInspector(virt_inspector.Inspector):
                            memory_stats['unused']) / units.Ki
         if 'rss' in memory_stats:
             memory_resident = memory_stats['rss'] / units.Ki
+        if 'swap_in' in memory_stats and 'swap_out' in memory_stats:
+            memory_swap_in = memory_stats['swap_in'] / units.Ki
+            memory_swap_out = memory_stats['swap_out'] / units.Ki
 
         # TODO(sileht): stats also have the disk/vnic info
         # we could use that instead of the old method for Queen
@@ -198,6 +189,8 @@ class LibvirtInspector(virt_inspector.Inspector):
             cpu_time=cpu_time,
             memory_usage=memory_used,
             memory_resident=memory_resident,
+            memory_swap_in=memory_swap_in,
+            memory_swap_out=memory_swap_out,
             cpu_cycles=stats.get("perf.cpu_cycles"),
             instructions=stats.get("perf.instructions"),
             cache_references=stats.get("perf.cache_references"),

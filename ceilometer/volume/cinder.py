@@ -15,13 +15,22 @@
 
 from __future__ import absolute_import
 
-from ceilometer.agent import plugin_base
+from ceilometer.polling import plugin_base
 from ceilometer import sample
 
 
 class _Base(plugin_base.PollsterBase):
     def extract_metadata(self, obj):
-        return dict((k, getattr(obj, k)) for k in self.FIELDS)
+        metadata = dict((k, getattr(obj, k)) for k in self.FIELDS)
+        if getattr(obj, "volume_image_metadata", None):
+            metadata["image_id"] = obj.volume_image_metadata.get("image_id")
+        else:
+            metadata["image_id"] = None
+        if getattr(obj, "attachments", None):
+            metadata["instance_id"] = obj.attachments[0]["server_id"]
+        else:
+            metadata["instance_id"] = None
+        return metadata
 
 
 class VolumeSizePollster(_Base):
@@ -73,7 +82,7 @@ class VolumeSnapshotSize(_Base):
                 type=sample.TYPE_GAUGE,
                 unit='GB',
                 volume=snapshot.size,
-                user_id=None,
+                user_id=snapshot.user_id,
                 project_id=getattr(
                     snapshot,
                     'os-extended-snapshot-attributes:project_id'),

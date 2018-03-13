@@ -17,10 +17,10 @@ import abc
 from oslo_log import log
 import six
 
-from ceilometer.agent import plugin_base
 from ceilometer.i18n import _
 from ceilometer.ipmi.platform import exception as nmexcept
 from ceilometer.ipmi.platform import intel_node_manager as node_manager
+from ceilometer.polling import plugin_base
 from ceilometer import sample
 
 LOG = log.getLogger(__name__)
@@ -36,7 +36,8 @@ class _Base(plugin_base.PollsterBase):
 
         # Do not load this extension if no NM support
         if self.nodemanager.nm_version == 0:
-            raise plugin_base.ExtensionLoadError()
+            raise plugin_base.ExtensionLoadError(
+                "NodeManager not supported on host")
 
     @property
     def default_discovery(self):

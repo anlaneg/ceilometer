@@ -17,9 +17,8 @@ import mock
 import six
 import yaml
 
-from oslo_config import fixture as fixture_config
+import fixtures
 from oslo_utils import fileutils
-from oslotest import mockpatch
 
 from ceilometer import declarative
 from ceilometer.hardware.inspector import base as inspector_base
@@ -110,10 +109,9 @@ class TestGenericPollsters(test_base.BaseTestCase):
 
     def setUp(self):
         super(TestGenericPollsters, self).setUp()
-        conf = service.prepare_service([], [])
-        self.conf = self.useFixture(fixture_config.Config(conf)).conf
+        self.conf = service.prepare_service([], [])
         self.resources = ["snmp://test", "snmp://test2"]
-        self.useFixture(mockpatch.Patch(
+        self.useFixture(fixtures.MockPatch(
             'ceilometer.hardware.inspector.get_inspector',
             self.faux_get_inspector))
         self.pollster = generic.GenericHardwareDeclarativePollster(self.conf)

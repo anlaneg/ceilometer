@@ -13,11 +13,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import mock
-from oslo_config import fixture as fixture_config
-
-from ceilometer.agent import manager
 from ceilometer.image import glance
+from ceilometer.polling import manager
 from ceilometer import service
 import ceilometer.tests.base as base
 
@@ -85,13 +82,11 @@ IMAGE_LIST = [
 
 
 class TestImagePollsterPageSize(base.BaseTestCase):
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(TestImagePollsterPageSize, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
-        self.manager = manager.AgentManager(0, self.CONF)
-        self.pollster = glance.ImageSizePollster(self.CONF)
+        self.manager = manager.AgentManager(0, conf)
+        self.pollster = glance.ImageSizePollster(conf)
 
     def test_image_pollster(self):
         image_samples = list(

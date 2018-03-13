@@ -14,25 +14,22 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import fixtures
 import mock
-from oslo_config import fixture as fixture_config
 from oslotest import base
-from oslotest import mockpatch
 
-from ceilometer.agent import manager
-from ceilometer.agent import plugin_base
 from ceilometer.network import floatingip
 from ceilometer.network.services import discovery
+from ceilometer.polling import manager
+from ceilometer.polling import plugin_base
 from ceilometer import service
 
 
 class _BaseTestFloatingIPPollster(base.BaseTestCase):
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(_BaseTestFloatingIPPollster, self).setUp()
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.manager = manager.AgentManager(0, self.CONF)
         plugin_base._get_keystone = mock.Mock()
 
@@ -43,9 +40,9 @@ class TestFloatingIPPollster(_BaseTestFloatingIPPollster):
         super(TestFloatingIPPollster, self).setUp()
         self.pollster = floatingip.FloatingIPPollster(self.CONF)
         fake_fip = self.fake_get_fip_service()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'fip_get_all',
-                                        return_value=fake_fip))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'fip_get_all',
+                                           return_value=fake_fip))
 
     @staticmethod
     def fake_get_fip_service():

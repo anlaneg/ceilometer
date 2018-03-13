@@ -20,7 +20,7 @@ import six
 from six.moves.urllib import parse as urlparse
 from stevedore import driver as _driver
 
-from ceilometer.agent import plugin_base
+from ceilometer.polling import plugin_base
 from ceilometer import sample
 
 
@@ -86,7 +86,7 @@ class _Base(plugin_base.PollsterBase):
                 if not isinstance(data, list):
                     data = [data]
                 for (volume, resource_id,
-                     resource_metadata) in data:
+                     resource_metadata, project_id) in data:
 
                     yield sample.Sample(
                         name=self.meter_name,
@@ -94,7 +94,7 @@ class _Base(plugin_base.PollsterBase):
                         unit=self.meter_unit,
                         volume=volume,
                         user_id=None,
-                        project_id=None,
+                        project_id=project_id,
                         resource_id=resource_id,
                         resource_metadata=resource_metadata
                     )

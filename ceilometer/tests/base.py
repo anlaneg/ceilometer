@@ -17,13 +17,12 @@ import functools
 import os
 import tempfile
 
+import fixtures
 import oslo_messaging.conffixture
 from oslo_utils import timeutils
 from oslotest import base
-from oslotest import mockpatch
 import six
 from testtools import testcase
-import webtest
 import yaml
 
 import ceilometer
@@ -33,7 +32,7 @@ from ceilometer import messaging
 class BaseTestCase(base.BaseTestCase):
     def setup_messaging(self, conf, exchange=None):
         self.useFixture(oslo_messaging.conffixture.ConfFixture(conf))
-        conf.set_override("notification_driver", "messaging")
+        conf.set_override("notification_driver", ["messaging"])
         if not exchange:
             exchange = 'ceilometer'
         conf.set_override("control_exchange", exchange)
@@ -41,7 +40,7 @@ class BaseTestCase(base.BaseTestCase):
         # NOTE(sileht): Ensure a new oslo.messaging driver is loaded
         # between each tests
         self.transport = messaging.get_transport(conf, "fake://", cache=False)
-        self.useFixture(mockpatch.Patch(
+        self.useFixture(fixtures.MockPatch(
             'ceilometer.messaging.get_transport',
             return_value=self.transport))
 
@@ -98,10 +97,6 @@ def _skip_decorator(func):
             return func(*args, **kwargs)
         except ceilometer.NotImplementedError as e:
             raise testcase.TestSkipped(six.text_type(e))
-        except webtest.app.AppError as e:
-            if 'not implemented' in six.text_type(e):
-                raise testcase.TestSkipped(six.text_type(e))
-            raise
     return skip_if_not_implemented
 
 

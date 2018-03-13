@@ -14,16 +14,14 @@
 # under the License.
 """Tests for Ceilometer notify daemon."""
 
+import fixtures
 import mock
-from oslo_config import fixture as fixture_config
 import oslo_messaging
 from oslo_utils import fileutils
-from oslotest import mockpatch
 import six
 import yaml
 
-from ceilometer.event import endpoint as event_endpoint
-from ceilometer import pipeline
+from ceilometer.pipeline import event as event_pipe
 from ceilometer import publisher
 from ceilometer.publisher import test
 from ceilometer import service
@@ -110,13 +108,13 @@ class TestEventEndpoint(tests_base.BaseTestCase):
         self.CONF.set_override('event_pipeline_cfg_file',
                                ev_pipeline_cfg_file)
 
-        ev_pipeline_mgr = pipeline.setup_event_pipeline(self.CONF)
+        ev_pipeline_mgr = event_pipe.EventPipelineManager(self.CONF)
         return ev_pipeline_mgr
 
     def _setup_endpoint(self, publishers):
         ev_pipeline_mgr = self._setup_pipeline(publishers)
-        self.endpoint = event_endpoint.EventsNotificationEndpoint(
-            ev_pipeline_mgr)
+        self.endpoint = event_pipe.EventEndpoint(
+            ev_pipeline_mgr.conf, ev_pipeline_mgr.publisher())
 
         self.endpoint.event_converter = mock.MagicMock()
         self.endpoint.event_converter.to_event.return_value = mock.MagicMock(
@@ -124,15 +122,14 @@ class TestEventEndpoint(tests_base.BaseTestCase):
 
     def setUp(self):
         super(TestEventEndpoint, self).setUp()
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
-        self.CONF.set_override("connection", "log://", group='database')
+        self.CONF = service.prepare_service([], [])
         self.setup_messaging(self.CONF)
 
-        self.useFixture(mockpatch.PatchObject(publisher, 'get_publisher',
-                                              side_effect=self.get_publisher))
+        self.useFixture(fixtures.MockPatchObject(
+            publisher, 'get_publisher',
+            side_effect=self.get_publisher))
         self.fake_publisher = mock.Mock()
-        self.useFixture(mockpatch.Patch(
+        self.useFixture(fixtures.MockPatch(
             'ceilometer.publisher.test.TestPublisher',
             return_value=self.fake_publisher))
 
@@ -168,8 +165,8 @@ class TestEventEndpoint(tests_base.BaseTestCase):
             'metadata': {},
             'ctxt': {}
         }
-        with mock.patch("ceilometer.pipeline.LOG") as mock_logger:
-            ret = self.endpoint.process_notification('info', [message])
+        with mock.patch("ceilometer.pipeline.event.LOG") as mock_logger:
+            ret = self.endpoint.process_notifications('info', [message])
             self.assertEqual(oslo_messaging.NotificationResult.REQUEUE, ret)
             exception_mock = mock_logger.error
             self.assertIn('Exit after error from publisher',
@@ -188,8 +185,8 @@ class TestEventEndpoint(tests_base.BaseTestCase):
             'metadata': {},
             'ctxt': {}
         }
-        with mock.patch("ceilometer.pipeline.LOG") as mock_logger:
-            ret = self.endpoint.process_notification('info', [message])
+        with mock.patch("ceilometer.pipeline.event.LOG") as mock_logger:
+            ret = self.endpoint.process_notifications('info', [message])
             self.assertEqual(oslo_messaging.NotificationResult.HANDLED, ret)
             exception_mock = mock_logger.error
             self.assertIn('Continue after error from publisher',

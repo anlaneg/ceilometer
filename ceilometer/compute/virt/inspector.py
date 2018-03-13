@@ -21,15 +21,14 @@ from oslo_log import log
 from stevedore import driver
 
 import ceilometer
-from ceilometer.i18n import _LE
 
 
 OPTS = [
     cfg.StrOpt('hypervisor_inspector',
                default='libvirt',
                help='Inspector to use for inspecting the hypervisor layer. '
-                    'Known inspectors are libvirt, hyperv, vsphere, xenapi '
-                    'and powervm.'),
+                    'Known inspectors are libvirt, hyperv, vsphere '
+                    'and xenapi.'),
 ]
 
 
@@ -46,6 +45,8 @@ class InstanceStats(object):
         'cpu_l3_cache_usage',      # cachesize: Amount of CPU L3 cache used
         'memory_usage',            # usage: Amount of memory used
         'memory_resident',         #
+        'memory_swap_in',          # memory swap in
+        'memory_swap_out',         # memory swap out
         'memory_bandwidth_total',  # total: total system bandwidth from one
                                    #   level of cache
         'memory_bandwidth_local',  # local: bandwidth of memory traffic for a
@@ -111,7 +112,8 @@ DiskStats = collections.namedtuple('DiskStats',
                                    ['device',
                                     'read_bytes', 'read_requests',
                                     'write_bytes', 'write_requests',
-                                    'errors'])
+                                    'errors', 'wr_total_times',
+                                    'rd_total_times'])
 
 # Named tuple representing disk rate statistics.
 #
@@ -181,7 +183,7 @@ class Inspector(object):
     def __init__(self, conf):
         self.conf = conf
 
-    def inspect_instance(self, instance, duration=None):
+    def inspect_instance(self, instance, duration):
         """Inspect the CPU statistics for an instance.
 
         :param instance: the target instance
@@ -191,16 +193,18 @@ class Inspector(object):
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_vnics(self, instance):
+    def inspect_vnics(self, instance, duration):
         """Inspect the vNIC statistics for an instance.
 
         :param instance: the target instance
+        :param duration: the last 'n' seconds, over which the value should be
+               inspected
         :return: for each vNIC, the number of bytes & packets
                  received and transmitted
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_vnic_rates(self, instance, duration=None):
+    def inspect_vnic_rates(self, instance, duration):
         """Inspect the vNIC rate statistics for an instance.
 
         :param instance: the target instance
@@ -211,16 +215,18 @@ class Inspector(object):
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_disks(self, instance):
+    def inspect_disks(self, instance, duration):
         """Inspect the disk statistics for an instance.
 
         :param instance: the target instance
+        :param duration: the last 'n' seconds, over which the value should be
+               inspected
         :return: for each disk, the number of bytes & operations
                  read and written, and the error count
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_disk_rates(self, instance, duration=None):
+    def inspect_disk_rates(self, instance, duration):
         """Inspect the disk statistics as rates for an instance.
 
         :param instance: the target instance
@@ -231,26 +237,32 @@ class Inspector(object):
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_disk_latency(self, instance):
+    def inspect_disk_latency(self, instance, duration):
         """Inspect the disk statistics as rates for an instance.
 
         :param instance: the target instance
+        :param duration: the last 'n' seconds, over which the value should be
+               inspected
         :return: for each disk, the average disk latency
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_disk_iops(self, instance):
+    def inspect_disk_iops(self, instance, duration):
         """Inspect the disk statistics as rates for an instance.
 
         :param instance: the target instance
+        :param duration: the last 'n' seconds, over which the value should be
+               inspected
         :return: for each disk, the number of iops per second
         """
         raise ceilometer.NotImplementedError
 
-    def inspect_disk_info(self, instance):
+    def inspect_disk_info(self, instance, duration):
         """Inspect the disk information for an instance.
 
         :param instance: the target instance
+        :param duration: the last 'n' seconds, over which the value should be
+               inspected
         :return: for each disk , capacity , allocation and usage
         """
         raise ceilometer.NotImplementedError
@@ -265,5 +277,5 @@ def get_hypervisor_inspector(conf):
                                    invoke_args=(conf, ))
         return mgr.driver
     except ImportError as e:
-        LOG.error(_LE("Unable to load the hypervisor inspector: %s") % e)
+        LOG.error("Unable to load the hypervisor inspector: %s" % e)
         return Inspector(conf)

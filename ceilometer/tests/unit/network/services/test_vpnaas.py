@@ -13,26 +13,23 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import fixtures
 import mock
-from oslo_config import fixture as fixture_config
 from oslotest import base
-from oslotest import mockpatch
 
-from ceilometer.agent import manager
-from ceilometer.agent import plugin_base
 from ceilometer.network.services import discovery
 from ceilometer.network.services import vpnaas
+from ceilometer.polling import manager
+from ceilometer.polling import plugin_base
 from ceilometer import service
 
 
 class _BaseTestVPNPollster(base.BaseTestCase):
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(_BaseTestVPNPollster, self).setUp()
         self.addCleanup(mock.patch.stopall)
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.manager = manager.AgentManager(0, self.CONF)
         plugin_base._get_keystone = mock.Mock()
         catalog = (plugin_base._get_keystone.session.auth.get_access.
@@ -47,9 +44,9 @@ class TestVPNServicesPollster(_BaseTestVPNPollster):
         super(TestVPNServicesPollster, self).setUp()
         self.pollster = vpnaas.VPNServicesPollster(self.CONF)
         fake_vpn = self.fake_get_vpn_service()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'vpn_get_all',
-                                        return_value=fake_vpn))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'vpn_get_all',
+                                           return_value=fake_vpn))
 
     @staticmethod
     def fake_get_vpn_service():
@@ -129,9 +126,9 @@ class TestIPSecConnectionsPollster(_BaseTestVPNPollster):
         super(TestIPSecConnectionsPollster, self).setUp()
         self.pollster = vpnaas.IPSecConnectionsPollster(self.CONF)
         fake_conns = self.fake_get_ipsec_connections()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'ipsec_site_connections_get_all',
-                                        return_value=fake_conns))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'ipsec_site_connections_get_all',
+                                           return_value=fake_conns))
 
     @staticmethod
     def fake_get_ipsec_connections():

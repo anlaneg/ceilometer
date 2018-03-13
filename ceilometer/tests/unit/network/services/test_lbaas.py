@@ -13,27 +13,23 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import fixtures
 import mock
-
-from oslo_config import fixture as fixture_config
 from oslotest import base
-from oslotest import mockpatch
 
-from ceilometer.agent import manager
-from ceilometer.agent import plugin_base
 from ceilometer.network.services import discovery
 from ceilometer.network.services import lbaas
+from ceilometer.polling import manager
+from ceilometer.polling import plugin_base
 from ceilometer import service
 
 
 class _BaseTestLBPollster(base.BaseTestCase):
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(_BaseTestLBPollster, self).setUp()
         self.addCleanup(mock.patch.stopall)
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.manager = manager.AgentManager(0, self.CONF)
         self.CONF.set_override('neutron_lbaas_version',
                                'v1',
@@ -51,9 +47,9 @@ class TestLBPoolPollster(_BaseTestLBPollster):
         super(TestLBPoolPollster, self).setUp()
         self.pollster = lbaas.LBPoolPollster(self.CONF)
         fake_pools = self.fake_get_pools()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'pool_get_all',
-                                        return_value=fake_pools))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'pool_get_all',
+                                           return_value=fake_pools))
 
     @staticmethod
     def fake_get_pools():
@@ -175,9 +171,9 @@ class TestLBVipPollster(_BaseTestLBPollster):
         super(TestLBVipPollster, self).setUp()
         self.pollster = lbaas.LBVipPollster(self.CONF)
         fake_vips = self.fake_get_vips()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'vip_get_all',
-                                        return_value=fake_vips))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'vip_get_all',
+                                           return_value=fake_vips))
 
     @staticmethod
     def fake_get_vips():
@@ -299,9 +295,9 @@ class TestLBMemberPollster(_BaseTestLBPollster):
         super(TestLBMemberPollster, self).setUp()
         self.pollster = lbaas.LBMemberPollster(self.CONF)
         fake_members = self.fake_get_members()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'member_get_all',
-                                        return_value=fake_members))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'member_get_all',
+                                           return_value=fake_members))
 
     @staticmethod
     def fake_get_members():
@@ -393,9 +389,9 @@ class TestLBHealthProbePollster(_BaseTestLBPollster):
         super(TestLBHealthProbePollster, self).setUp()
         self.pollster = lbaas.LBHealthMonitorPollster(self.CONF)
         fake_health_monitor = self.fake_get_health_monitor()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'health_monitor_get_all',
-                                        return_value=fake_health_monitor))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'health_monitor_get_all',
+                                           return_value=fake_health_monitor))
 
     @staticmethod
     def fake_get_health_monitor():
@@ -436,14 +432,14 @@ class TestLBStatsPollster(_BaseTestLBPollster):
     def setUp(self):
         super(TestLBStatsPollster, self).setUp()
         fake_pool_stats = self.fake_pool_stats()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'pool_stats',
-                                        return_value=fake_pool_stats))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'pool_stats',
+                                           return_value=fake_pool_stats))
 
         fake_pools = self.fake_get_pools()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'pool_get_all',
-                                        return_value=fake_pools))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'pool_get_all',
+                                           return_value=fake_pools))
 
     @staticmethod
     def fake_get_pools():
@@ -473,7 +469,6 @@ class TestLBStatsPollster(_BaseTestLBPollster):
                           }
                 }
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def _check_get_samples(self, factory, sample_name, expected_volume,
                            expected_type):
         pollster = factory(self.CONF)

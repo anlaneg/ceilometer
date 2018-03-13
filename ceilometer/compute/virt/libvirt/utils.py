@@ -23,7 +23,7 @@ except ImportError:
     libvirt = None
 
 from ceilometer.compute.virt import inspector as virt_inspector
-from ceilometer.i18n import _LE
+from ceilometer.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ OPTS = [
 LIBVIRT_PER_TYPE_URIS = dict(uml='uml:///system', xen='xen:///', lxc='lxc:///')
 
 
-# We don't use the libvirt constants in case of libvirt is not avialable
+# We don't use the libvirt constants in case of libvirt is not available
 VIR_DOMAIN_NOSTATE = 0
 VIR_DOMAIN_RUNNING = 1
 VIR_DOMAIN_BLOCKED = 2
@@ -65,7 +65,7 @@ LIBVIRT_POWER_STATE = {
 
 # NOTE(sileht): This is a guessing of the nova
 # status, should be true 99.9% on the time,
-# but can be wrong during some transistion state
+# but can be wrong during some transition state
 # like shelving/rescuing
 LIBVIRT_STATUS = {
     VIR_DOMAIN_NOSTATE: 'building',
@@ -92,11 +92,13 @@ def refresh_libvirt_connection(conf, klass):
     connection = getattr(klass, '_libvirt_connection', None)
     if not connection or not connection.isAlive():
         connection = new_libvirt_connection(conf)
-        setattr(klass,  '_libvirt_connection', connection)
+        setattr(klass, '_libvirt_connection', connection)
     return connection
 
 
 def is_disconnection_exception(e):
+    if not libvirt:
+        return False
     return (isinstance(e, libvirt.libvirtError)
             and e.get_error_code() in (libvirt.VIR_ERR_SYSTEM_ERROR,
                                        libvirt.VIR_ERR_INTERNAL_ERROR)
@@ -116,9 +118,9 @@ def raise_nodata_if_unsupported(method):
         except libvirt.libvirtError as e:
             # NOTE(sileht): At this point libvirt connection error
             # have been reraise as tenacity.RetryError()
-            msg = _LE('Failed to inspect instance %(instance_uuid)s stats, '
-                      'can not get info from libvirt: %(error)s') % {
-                          "instance_uuid": instance.id,
-                          "error": e}
+            msg = _('Failed to inspect instance %(instance_uuid)s stats, '
+                    'can not get info from libvirt: %(error)s') % {
+                        "instance_uuid": instance.id,
+                        "error": e}
             raise virt_inspector.NoDataException(msg)
     return inner

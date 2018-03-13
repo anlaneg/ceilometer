@@ -10,26 +10,43 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-
+import glob
 import itertools
+import os
+import re
+
 import pkg_resources
 import six
 
 from oslo_config import cfg
 from oslo_log import log
-from oslo_utils import fnmatch
 from stevedore import extension
 
 from ceilometer import declarative
-from ceilometer import notification
-from ceilometer.i18n import _LE, _LW
+from ceilometer.i18n import _
+from ceilometer.pipeline import sample as endpoint
 from ceilometer import sample as sample_util
 
 OPTS = [
     cfg.StrOpt('meter_definitions_cfg_file',
-               default="meters.yaml",
-               help="Configuration file for defining meter notifications."
+               deprecated_for_removal=True,
+               help="Configuration file for defining meter "
+                    "notifications. This option is deprecated "
+                    "and use meter_definitions_dirs to "
+                    "configure meter notification file. Meter "
+                    "definitions configuration file will be sought "
+                    "according to the parameter."
                ),
+    cfg.MultiStrOpt('meter_definitions_dirs',
+                    default=["/etc/ceilometer/meters.d",
+                             os.path.abspath(
+                                 os.path.join(
+                                     os.path.split(
+                                         os.path.dirname(__file__))[0],
+                                     "data", "meters.d"))],
+                    help="List directory to find files of "
+                         "defining meter notifications."
+                    ),
 ]
 
 LOG = log.getLogger(__name__)
@@ -50,21 +67,22 @@ class MeterDefinition(object):
                    if not self.cfg.get(field)]
         if missing:
             raise declarative.MeterDefinitionException(
-                _LE("Required fields %s not specified") % missing, self.cfg)
+                _("Required fields %s not specified") % missing, self.cfg)
 
         self._event_type = self.cfg.get('event_type')
         if isinstance(self._event_type, six.string_types):
             self._event_type = [self._event_type]
+        self._event_type = [re.compile(etype) for etype in self._event_type]
 
         if ('type' not in self.cfg.get('lookup', []) and
                 self.cfg['type'] not in sample_util.TYPES):
             raise declarative.MeterDefinitionException(
-                _LE("Invalid type %s specified") % self.cfg['type'], self.cfg)
+                _("Invalid type %s specified") % self.cfg['type'], self.cfg)
 
         self._fallback_user_id = declarative.Definition(
-            'user_id', "_context_user_id|_context_user", plugin_manager)
+            'user_id', "ctxt.user_id|ctxt.user", plugin_manager)
         self._fallback_project_id = declarative.Definition(
-            'project_id', "_context_tenant_id|_context_tenant", plugin_manager)
+            'project_id', "ctxt.tenant_id|ctxt.tenant", plugin_manager)
         self._attributes = {}
         self._metadata_attributes = {}
         self._user_meta = None
@@ -90,7 +108,7 @@ class MeterDefinition(object):
 
     def match_type(self, meter_name):
         for t in self._event_type:
-            if fnmatch.fnmatch(meter_name, t):
+            if t.match(meter_name):
                 return True
 
     def to_samples(self, message, all_values=False):
@@ -165,41 +183,49 @@ class MeterDefinition(object):
             yield sample
 
 
-class ProcessMeterNotifications(notification.NotificationProcessBase):
+class ProcessMeterNotifications(endpoint.SampleEndpoint):
 
     event_types = []
 
-    def __init__(self, manager):
-        super(ProcessMeterNotifications, self).__init__(manager)
+    def __init__(self, conf, publisher):
+        super(ProcessMeterNotifications, self).__init__(conf, publisher)
         self.definitions = self._load_definitions()
 
     def _load_definitions(self):
         plugin_manager = extension.ExtensionManager(
             namespace='ceilometer.event.trait_plugin')
-        meters_cfg = declarative.load_definitions(
-            self.manager.conf, {},
-            self.manager.conf.meter.meter_definitions_cfg_file,
-            pkg_resources.resource_filename(__name__, "data/meters.yaml"))
-
         definitions = {}
-        for meter_cfg in reversed(meters_cfg['metric']):
-            if meter_cfg.get('name') in definitions:
-                # skip duplicate meters
-                LOG.warning(_LW("Skipping duplicate meter definition %s")
-                            % meter_cfg)
-                continue
-            try:
-                md = MeterDefinition(meter_cfg, self.manager.conf,
-                                     plugin_manager)
-            except declarative.DefinitionException as e:
-                errmsg = _LE("Error loading meter definition: %s")
-                LOG.error(errmsg, six.text_type(e))
-            else:
-                definitions[meter_cfg['name']] = md
+        mfs = []
+        for dir in self.conf.meter.meter_definitions_dirs:
+            for filepath in sorted(glob.glob(os.path.join(dir, "*.yaml"))):
+                if filepath is not None:
+                    mfs.append(filepath)
+        if self.conf.meter.meter_definitions_cfg_file is not None:
+            mfs.append(
+                pkg_resources.resource_filename(
+                    self.conf.meter.meter_definitions_cfg_file)
+            )
+        for mf in mfs:
+            meters_cfg = declarative.load_definitions(
+                self.conf, {}, mf)
+
+            for meter_cfg in reversed(meters_cfg['metric']):
+                if meter_cfg.get('name') in definitions:
+                    # skip duplicate meters
+                    LOG.warning("Skipping duplicate meter definition %s"
+                                % meter_cfg)
+                    continue
+                try:
+                    md = MeterDefinition(meter_cfg, self.conf, plugin_manager)
+                except declarative.DefinitionException as e:
+                    errmsg = "Error loading meter definition: %s"
+                    LOG.error(errmsg, six.text_type(e))
+                else:
+                    definitions[meter_cfg['name']] = md
         return definitions.values()
 
-    def process_notification(self, notification_body):
+    def build_sample(self, notification):
         for d in self.definitions:
-            if d.match_type(notification_body['event_type']):
-                for s in d.to_samples(notification_body):
+            if d.match_type(notification['event_type']):
+                for s in d.to_samples(notification):
                     yield sample_util.Sample.from_notification(**s)

@@ -13,14 +13,14 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import json
+
 from oslo_log import log
-from oslo_serialization import jsonutils
 from oslo_utils import strutils
 import requests
 from requests import adapters
 from six.moves.urllib import parse as urlparse
 
-from ceilometer.i18n import _LE
 from ceilometer import publisher
 
 LOG = log.getLogger(__name__)
@@ -38,7 +38,6 @@ class HttpPublisher(publisher.ConfigPublisherBase):
         - ssl certificate verification can be disabled by setting `verify_ssl`
           to False
         - batching can be configured by `batch`
-        - connection pool size configured using `poolsize`
         - Basic authentication can be configured using the URL authentication
           scheme: http://username:password@example.com
         - For certificate authentication, `clientcert` and `clientkey` are the
@@ -55,10 +54,8 @@ class HttpPublisher(publisher.ConfigPublisherBase):
     pipeline::
 
           - name: meter_file
-            interval: 600
-            counters:
+            meters:
                 - "*"
-            transformers:
             publishers:
                 - http://host:80/path?timeout=1&max_retries=2&batch=False
 
@@ -122,9 +119,9 @@ class HttpPublisher(publisher.ConfigPublisherBase):
         self.raw_only = strutils.bool_from_string(
             self._get_param(params, 'raw_only', False))
 
-        pool_size = self._get_param(params, 'poolsize', 10, int)
         kwargs = {'max_retries': self.max_retries,
-                  'pool_connections': pool_size, 'pool_maxsize': pool_size}
+                  'pool_connections': conf.max_parallel_requests,
+                  'pool_maxsize': conf.max_parallel_requests}
         self.session = requests.Session()
 
         # authentication & config params have been removed, so use URL with
@@ -158,7 +155,7 @@ class HttpPublisher(publisher.ConfigPublisherBase):
         if not data:
             LOG.debug('Data set is empty!')
             return
-        data = jsonutils.dumps(data)
+        data = json.dumps(data)
         LOG.trace('Message: %s', data)
         try:
             res = self.session.post(self.target, data=data,
@@ -170,8 +167,8 @@ class HttpPublisher(publisher.ConfigPublisherBase):
             LOG.debug('Message posting to %s: status code %d.',
                       self.target, res.status_code)
         except requests.exceptions.HTTPError:
-            LOG.exception(_LE('Status Code: %(code)s. '
-                              'Failed to dispatch message: %(data)s') %
+            LOG.exception('Status Code: %(code)s. '
+                          'Failed to dispatch message: %(data)s' %
                           {'code': res.status_code, 'data': data})
 
     def publish_samples(self, samples):

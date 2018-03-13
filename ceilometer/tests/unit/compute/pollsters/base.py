@@ -14,9 +14,8 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import fixtures
 import mock
-from oslo_config import fixture as fixture_config
-from oslotest import mockpatch
 
 from ceilometer.compute.virt import inspector as virt_inspector
 from ceilometer import service
@@ -27,8 +26,7 @@ class TestPollsterBase(base.BaseTestCase):
 
     def setUp(self):
         super(TestPollsterBase, self).setUp()
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
 
         self.inspector = mock.Mock()
         self.instance = mock.MagicMock()
@@ -47,7 +45,7 @@ class TestPollsterBase(base.BaseTestCase):
             'metering.stack': '2cadc4b4-8789-123c-b4eg-edd2f0a9c128',
             'project_cos': 'dev'}
 
-        self.useFixture(mockpatch.Patch(
+        self.useFixture(fixtures.MockPatch(
             'ceilometer.compute.virt.inspector.get_hypervisor_inspector',
             new=mock.Mock(return_value=self.inspector)))
 
@@ -55,7 +53,7 @@ class TestPollsterBase(base.BaseTestCase):
         # base compute pollster class, that leads to the fact that we
         # need to mock all this class property to avoid context sharing between
         # the tests
-        self.useFixture(mockpatch.Patch(
+        self.useFixture(fixtures.MockPatch(
             'ceilometer.compute.pollsters.'
             'GenericComputePollster._get_inspector',
             return_value=self.inspector))

@@ -20,7 +20,7 @@ from oslo_log import log
 from oslo_utils import timeutils
 import six
 
-from ceilometer.i18n import _, _LW
+from ceilometer.i18n import _
 from ceilometer import sample
 from ceilometer import transformer
 
@@ -83,19 +83,19 @@ class DeltaTransformer(BaseConversionTransformer):
             time_delta = timeutils.delta_seconds(prev_timestamp, timestamp)
             # disallow violations of the arrow of time
             if time_delta < 0:
-                LOG.warning(_LW('Dropping out of time order sample: %s'), (s,))
+                LOG.warning('Dropping out of time order sample: %s', (s,))
                 # Reset the cache to the newer sample.
                 self.cache[key] = prev
                 return None
             volume_delta = s.volume - prev_volume
             if self.growth_only and volume_delta < 0:
-                LOG.warning(_LW('Negative delta detected, dropping value'))
+                LOG.warning('Negative delta detected, dropping value')
                 s = None
             else:
                 s = self._convert(s, volume_delta)
                 LOG.debug('Converted to: %s', s)
         else:
-            LOG.warning(_LW('Dropping sample with no predecessor: %s'), (s,))
+            LOG.warning('Dropping sample with no predecessor: %s', (s,))
             s = None
         return s
 
@@ -128,6 +128,7 @@ class ScalingTransformer(BaseConversionTransformer):
         super(ScalingTransformer, self).__init__(source=source, target=target,
                                                  **kwargs)
         self.scale = self.target.get('scale')
+        self.max = self.target.get('max')
         LOG.debug('scaling conversion transformer with source:'
                   ' %(source)s target: %(target)s:', {'source': self.source,
                                                       'target': self.target})
@@ -145,11 +146,12 @@ class ScalingTransformer(BaseConversionTransformer):
 
     def _convert(self, s, growth=1):
         """Transform the appropriate sample fields."""
+        volume = self._scale(s) * growth
         return sample.Sample(
             name=self._map(s, 'name'),
             unit=self._map(s, 'unit'),
             type=self.target.get('type', s.type),
-            volume=self._scale(s) * growth,
+            volume=min(volume, self.max) if self.max else volume,
             user_id=s.user_id,
             project_id=s.project_id,
             resource_id=s.resource_id,
@@ -185,12 +187,18 @@ class RateOfChangeTransformer(ScalingTransformer):
         key = s.name + s.resource_id
         prev = self.cache.get(key)
         timestamp = timeutils.parse_isotime(s.timestamp)
-        self.cache[key] = (s.volume, timestamp)
+        self.cache[key] = (s.volume, timestamp, s.monotonic_time)
 
         if prev:
             prev_volume = prev[0]
             prev_timestamp = prev[1]
-            time_delta = timeutils.delta_seconds(prev_timestamp, timestamp)
+            prev_monotonic_time = prev[2]
+            if (prev_monotonic_time is not None and
+                    s.monotonic_time is not None):
+                # NOTE(sileht): Prefer high precision timer
+                time_delta = s.monotonic_time - prev_monotonic_time
+            else:
+                time_delta = timeutils.delta_seconds(prev_timestamp, timestamp)
             # disallow violations of the arrow of time
             if time_delta < 0:
                 LOG.warning(_('dropping out of time order sample: %s'), (s,))

@@ -22,7 +22,7 @@ from oslo_log import log
 from oslo_utils import netutils
 
 import ceilometer
-from ceilometer.i18n import _, _LW
+from ceilometer.i18n import _
 from ceilometer import publisher
 from ceilometer.publisher import utils
 
@@ -33,8 +33,7 @@ class UDPPublisher(publisher.ConfigPublisherBase):
     def __init__(self, conf, parsed_url):
         super(UDPPublisher, self).__init__(conf, parsed_url)
         self.host, self.port = netutils.parse_host_port(
-            parsed_url.netloc,
-            default_port=self.conf.collector.udp_port)
+            parsed_url.netloc, default_port=4952)
         addrinfo = None
         try:
             addrinfo = socket.getaddrinfo(self.host, None, socket.AF_INET6,
@@ -48,9 +47,9 @@ class UDPPublisher(publisher.ConfigPublisherBase):
         if addrinfo:
             addr_family = addrinfo[0]
         else:
-            LOG.warning(_LW(
-                        "Cannot resolve host %s, creating AF_INET socket..."),
-                        self.host)
+            LOG.warning(
+                "Cannot resolve host %s, creating AF_INET socket...",
+                self.host)
             addr_family = socket.AF_INET
         self.socket = socket.socket(addr_family,
                                     socket.SOCK_DGRAM)

@@ -14,16 +14,15 @@
 
 import collections
 
+import fixtures
 from keystoneauth1 import exceptions
 import mock
-from oslo_config import fixture as fixture_config
 from oslotest import base
-from oslotest import mockpatch
 from swiftclient import client as swift_client
 import testscenarios.testcase
 
-from ceilometer.agent import manager
 from ceilometer.objectstore import swift
+from ceilometer.polling import manager
 from ceilometer import service
 
 HEAD_ACCOUNTS = [('tenant-000', {'x-account-object-count': 12,
@@ -103,11 +102,9 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
             if i[0] in tenant_ids:
                 yield i
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(TestSwiftPollster, self).setUp()
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.pollster = self.factory(self.CONF)
         self.manager = TestManager(0, self.CONF)
 
@@ -122,8 +119,8 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
 
     def test_iter_accounts_no_cache(self):
         cache = {}
-        with mockpatch.PatchObject(self.factory, '_get_account_info',
-                                   return_value=[]):
+        with fixtures.MockPatchObject(self.factory, '_get_account_info',
+                                      return_value=[]):
             data = list(self.pollster._iter_accounts(mock.Mock(), cache,
                                                      ASSIGNED_TENANTS))
 
@@ -139,8 +136,10 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
         )
 
         api_method = '%s_account' % self.pollster.METHOD
-        with mockpatch.PatchObject(swift_client, api_method, new=mock_method):
-            with mockpatch.PatchObject(self.factory, '_neaten_url'):
+        with fixtures.MockPatchObject(swift_client,
+                                      api_method,
+                                      new=mock_method):
+            with fixtures.MockPatchObject(self.factory, '_neaten_url'):
                 cache = {self.pollster.CACHE_KEY_METHOD: [self.ACCOUNTS[0]]}
                 data = list(self.pollster._iter_accounts(mock.Mock(), cache,
                                                          ASSIGNED_TENANTS))
@@ -169,16 +168,16 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
             self.assertEqual(standard_url, url)
 
     def test_metering(self):
-        with mockpatch.PatchObject(self.factory, '_iter_accounts',
-                                   side_effect=self.fake_iter_accounts):
+        with fixtures.MockPatchObject(self.factory, '_iter_accounts',
+                                      side_effect=self.fake_iter_accounts):
             samples = list(self.pollster.get_samples(self.manager, {},
                                                      ASSIGNED_TENANTS))
 
         self.assertEqual(2, len(samples), self.pollster.__class__)
 
     def test_get_meter_names(self):
-        with mockpatch.PatchObject(self.factory, '_iter_accounts',
-                                   side_effect=self.fake_iter_accounts):
+        with fixtures.MockPatchObject(self.factory, '_iter_accounts',
+                                      side_effect=self.fake_iter_accounts):
             samples = list(self.pollster.get_samples(self.manager, {},
                                                      ASSIGNED_TENANTS))
 
@@ -189,8 +188,10 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
         mock_method = mock.MagicMock()
         endpoint = 'end://point/'
         api_method = '%s_account' % self.pollster.METHOD
-        with mockpatch.PatchObject(swift_client, api_method, new=mock_method):
-            with mockpatch.PatchObject(
+        with fixtures.MockPatchObject(swift_client,
+                                      api_method,
+                                      new=mock_method):
+            with fixtures.MockPatchObject(
                     self.manager._service_catalog, 'url_for',
                     return_value=endpoint):
                 list(self.pollster.get_samples(self.manager, {},
@@ -205,9 +206,9 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
         endpoint = 'end://point/'
         mock_url_for = mock.MagicMock(return_value=endpoint)
         api_method = '%s_account' % self.pollster.METHOD
-        with mockpatch.PatchObject(swift_client, api_method,
-                                   new=mock.MagicMock()):
-            with mockpatch.PatchObject(
+        with fixtures.MockPatchObject(swift_client, api_method,
+                                      new=mock.MagicMock()):
+            with fixtures.MockPatchObject(
                     self.manager._service_catalog, 'url_for',
                     new=mock_url_for):
                 list(self.pollster.get_samples(self.manager, {},
@@ -217,7 +218,7 @@ class TestSwiftPollster(testscenarios.testcase.WithScenarios,
         self.assertEqual(1, mock_url_for.call_count)
 
     def test_endpoint_notfound(self):
-        with mockpatch.PatchObject(
+        with fixtures.MockPatchObject(
                 self.manager._service_catalog, 'url_for',
                 side_effect=self.fake_ks_service_catalog_url_for):
             samples = list(self.pollster.get_samples(self.manager, {},

@@ -13,26 +13,23 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import fixtures
 import mock
-from oslo_config import fixture as fixture_config
 from oslotest import base
-from oslotest import mockpatch
 
-from ceilometer.agent import manager
-from ceilometer.agent import plugin_base
 from ceilometer.network.services import discovery
 from ceilometer.network.services import fwaas
+from ceilometer.polling import manager
+from ceilometer.polling import plugin_base
 from ceilometer import service
 
 
 class _BaseTestFWPollster(base.BaseTestCase):
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(_BaseTestFWPollster, self).setUp()
         self.addCleanup(mock.patch.stopall)
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.manager = manager.AgentManager(0, self.CONF)
         plugin_base._get_keystone = mock.Mock()
         catalog = (plugin_base._get_keystone.session.auth.get_access.
@@ -47,9 +44,9 @@ class TestFirewallPollster(_BaseTestFWPollster):
         super(TestFirewallPollster, self).setUp()
         self.pollster = fwaas.FirewallPollster(self.CONF)
         fake_fw = self.fake_get_fw_service()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'firewall_get_all',
-                                        return_value=fake_fw))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'firewall_get_all',
+                                           return_value=fake_fw))
 
     @staticmethod
     def fake_get_fw_service():
@@ -125,9 +122,9 @@ class TestIPSecConnectionsPollster(_BaseTestFWPollster):
         super(TestIPSecConnectionsPollster, self).setUp()
         self.pollster = fwaas.FirewallPolicyPollster(self.CONF)
         fake_fw_policy = self.fake_get_fw_policy()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'fw_policy_get_all',
-                                        return_value=fake_fw_policy))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'fw_policy_get_all',
+                                           return_value=fake_fw_policy))
 
     @staticmethod
     def fake_get_fw_policy():

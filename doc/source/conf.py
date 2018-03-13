@@ -39,24 +39,18 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'openstack_dashboard.settings'
 # They can be extensions coming with Sphinx (named 'sphinx.ext.*')
 # or your custom ones.
 extensions = [
+    'openstackdocstheme',
     'sphinx.ext.autodoc',
-    'sphinxcontrib.autohttp.flask',
-    'wsmeext.sphinxext',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
-    'sphinxcontrib.pecanwsme.rest',
-    'oslosphinx',
+    'oslo_config.sphinxconfiggen',
 ]
 
-wsme_protocols = ['restjson', 'restxml']
+config_generator_config_file = os.path.join(ROOT,
+                                            'etc/ceilometer/ceilometer-config-generator.conf')
+sample_config_basename = '_static/ceilometer'
 
 todo_include_todos = True
-
-# Add any paths that contain templates here, relative to this directory.
-if os.getenv('HUDSON_PUBLISH_DOCS'):
-    templates_path = ['_ga', '_templates']
-else:
-    templates_path = ['_templates']
 
 # The suffix of source filenames.
 source_suffix = '.rst'
@@ -116,13 +110,12 @@ nitpicky = False
 # a list of builtin themes.
 # html_theme_path = ['.']
 # html_theme = '_theme'
+html_theme = 'openstackdocs'
 
-# Theme options are theme-specific and customize the look and feel of a theme
-# further.  For a list of options available for each theme, see the
-# documentation.
-html_theme_options = {
-    "nosidebar": "false"
-}
+# openstackdocstheme options
+repository_name = 'openstack/ceilometer'
+bug_project = 'ceilometer'
+bug_tag = ''
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -146,20 +139,12 @@ html_theme_options = {
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-#html_static_path = ['_static']
+html_static_path = ['_static']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
-#html_last_updated_fmt = '%b %d, %Y'
-try:
-    git_cmd = ["git", "log", "--pretty=format:'%ad, commit %h'", "--date=local",
-               "-n1"]
-    html_last_updated_fmt = subprocess.Popen(
-        git_cmd, stdout=subprocess.PIPE).communicate()[0]
-except Exception:
-    warnings.warn('Cannot get last updated time from git repository. '
-                  'Not setting "html_last_updated_fmt".')
-
+# Must set this variable to include year, month, day, hours, and minutes.
+html_last_updated_fmt = '%Y-%m-%d %H:%M'
 
 # If true, SmartyPants will be used to convert quotes and dashes to
 # typographically correct entities.
@@ -318,3 +303,11 @@ epub_copyright = u'2012-2015, OpenStack'
 
 # Allow duplicate toc entries.
 #epub_tocdup = True
+
+# NOTE(dhellmann): pbr used to set this option but now that we are
+# using Sphinx>=1.6.2 it does not so we have to set it ourselves.
+suppress_warnings = [
+    'app.add_directive', 'app.add_role',
+    'app.add_generic_role', 'app.add_node',
+    'image.nonlocal_uri',
+]

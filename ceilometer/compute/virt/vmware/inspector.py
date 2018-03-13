@@ -79,7 +79,7 @@ def get_api_session(conf):
     global vmware_api
     if vmware_api is None:
         vmware_api = __import__('oslo_vmware.api')
-    api_session = vmware_api.VMwareAPISession(
+    api_session = vmware_api.api.VMwareAPISession(
         conf.vmware.host_ip,
         conf.vmware.host_username,
         conf.vmware.host_password,
@@ -110,7 +110,7 @@ class VsphereInspector(virt_inspector.Inspector):
                                                     'runtime.powerState')
         if vm_powerState == "poweredOff":
             raise virt_inspector.InstanceShutOffException(
-                _('VM %s is poweroff in VMware vSphere') % instance.id)
+                _('VM %s is poweredOff in VMware vSphere') % instance.id)
 
         return vm_mobj
 
@@ -191,8 +191,8 @@ class VsphereInspector(virt_inspector.Inspector):
         # For this counter vSphere returns values scaled-up by 100, since the
         # corresponding API can't return decimals, but only longs.
         # For e.g. if the utilization is 12.34%, the value returned is 1234.
-        # Hence, dividing by 100.
-        cpu_util = cpu_util / 100
+        # Hence, dividing by 100.0.
+        cpu_util = cpu_util / 100.0
 
         mem_counter_id = self._ops.get_perf_counter_id(
             VC_AVERAGE_MEMORY_CONSUMED_CNTR)

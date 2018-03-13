@@ -19,8 +19,7 @@ from cotyledon import oslo_config_glue
 from oslo_config import cfg
 from oslo_log import log
 
-from ceilometer.agent import manager
-from ceilometer.i18n import _LW
+from ceilometer.polling import manager
 from ceilometer import service
 
 LOG = log.getLogger(__name__)
@@ -51,8 +50,8 @@ class DeduplicatedCfgList(cfg.types.List):
         result = super(DeduplicatedCfgList, self).__call__(*args, **kwargs)
         result_set = set(result)
         if len(result) != len(result_set):
-            LOG.warning(_LW("Duplicated values: %s found in CLI options, "
-                            "auto de-duplicated"), result)
+            LOG.warning("Duplicated values: %s found in CLI options, "
+                        "auto de-duplicated", result)
             result = list(result_set)
         if self.choices and not (result_set <= set(self.choices)):
             raise Exception('Valid values are %s, but found %s'
@@ -67,19 +66,13 @@ CLI_OPTS = [
                     dest='polling_namespaces',
                     help='Polling namespace(s) to be used while '
                          'resource polling'),
-    MultiChoicesOpt('pollster-list',
-                    default=[],
-                    dest='pollster_list',
-                    help='List of pollsters (or wildcard templates) to be '
-                         'used while polling'),
 ]
 
 
 def create_polling_service(worker_id, conf):
     return manager.AgentManager(worker_id,
                                 conf,
-                                conf.polling_namespaces,
-                                conf.pollster_list)
+                                conf.polling_namespaces)
 
 
 def main():

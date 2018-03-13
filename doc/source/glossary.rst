@@ -25,9 +25,6 @@
      measuring usage and sending the results to any number of
      target using the :term:`publisher`.
 
-   API server
-     HTTP REST API service for ceilometer.
-
    billing
      Billing is the process to assemble bill line items into a single
      per customer bill, emitting the bill to start the payment collection.
@@ -36,12 +33,6 @@
      Bus listener agent which takes events generated on the Oslo
      notification bus and transforms them into Ceilometer samples. This
      is the preferred method of data collection.
-
-   ceilometer
-     From Wikipedia [#]_:
-
-       A ceilometer is a device that uses a laser or other light
-       source to determine the height of a cloud base.
 
    polling agent
      Software service running either on a central management node within the
@@ -62,10 +53,10 @@
      number of disk io requests, etc.
      Three types of meters are defined in ceilometer:
 
-       * Cumulative: Increasing over time (e.g. disk I/O)
-       * Gauge: Discrete items (e.g. floating IPs, image uploads) and fluctuating
-         values (e.g. number of Swift objects)
-       * Delta: Incremental change to a counter over time (e.g. bandwidth delta)
+     * Cumulative: Increasing over time (e.g. disk I/O)
+     * Gauge: Discrete items (e.g. floating IPs, image uploads) and fluctuating
+       values (e.g. number of Swift objects)
+     * Delta: Incremental change to a counter over time (e.g. bandwidth delta)
 
    metering
      Metering is the process of collecting information about what,
@@ -80,14 +71,13 @@
      RPC driver.
 
    non-repudiable
-    From Wikipedia [#]_:
-
-      Non-repudiation refers to a state of affairs where the purported
-      maker of a statement will not be able to successfully challenge
-      the validity of the statement or contract. The term is often
-      seen in a legal setting wherein the authenticity of a signature
-      is being challenged. In such an instance, the authenticity is
-      being "repudiated".
+     “Non-repudiation refers to a state of affairs where the purported
+     maker of a statement will not be able to successfully challenge
+     the validity of the statement or contract. The term is often
+     seen in a legal setting wherein the authenticity of a signature
+     is being challenged. In such an instance, the authenticity is
+     being "repudiated".”
+     (Wikipedia, [#]_)
 
    project
      The OpenStack tenant or project.

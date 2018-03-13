@@ -12,27 +12,23 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import fixtures
 import mock
-
-from oslo_config import fixture as fixture_config
 from oslotest import base
-from oslotest import mockpatch
 
-from ceilometer.agent import manager
-from ceilometer.agent import plugin_base
 from ceilometer.network.services import discovery
 from ceilometer.network.services import lbaas
+from ceilometer.polling import manager
+from ceilometer.polling import plugin_base
 from ceilometer import service
 
 
 class _BaseTestLBPollster(base.BaseTestCase):
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(_BaseTestLBPollster, self).setUp()
         self.addCleanup(mock.patch.stopall)
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.manager = manager.AgentManager(0, self.CONF)
         plugin_base._get_keystone = mock.Mock()
         catalog = (plugin_base._get_keystone.session.auth.get_access.
@@ -48,9 +44,9 @@ class TestLBListenerPollster(_BaseTestLBPollster):
         self.pollster = lbaas.LBListenerPollster(self.CONF)
         self.pollster.lb_version = 'v2'
         fake_listeners = self.fake_list_listeners()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'list_listener',
-                                        return_value=fake_listeners))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'list_listener',
+                                           return_value=fake_listeners))
 
     @staticmethod
     def fake_list_listeners():
@@ -146,9 +142,9 @@ class TestLBLoadBalancerPollster(_BaseTestLBPollster):
         self.pollster = lbaas.LBLoadBalancerPollster(self.CONF)
         self.pollster.lb_version = 'v2'
         fake_loadbalancers = self.fake_list_loadbalancers()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'list_loadbalancer',
-                                        return_value=fake_loadbalancers))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'list_loadbalancer',
+                                           return_value=fake_loadbalancers))
 
     @staticmethod
     def fake_list_loadbalancers():
@@ -234,14 +230,14 @@ class TestLBStatsPollster(_BaseTestLBPollster):
     def setUp(self):
         super(TestLBStatsPollster, self).setUp()
         fake_balancer_stats = self.fake_balancer_stats()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'get_loadbalancer_stats',
-                                        return_value=fake_balancer_stats))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'get_loadbalancer_stats',
+                                           return_value=fake_balancer_stats))
 
         fake_loadbalancers = self.fake_list_loadbalancers()
-        self.useFixture(mockpatch.Patch('ceilometer.neutron_client.Client.'
-                                        'list_loadbalancer',
-                                        return_value=fake_loadbalancers))
+        self.useFixture(fixtures.MockPatch('ceilometer.neutron_client.Client.'
+                                           'list_loadbalancer',
+                                           return_value=fake_loadbalancers))
         self.CONF.set_override('neutron_lbaas_version',
                                'v2',
                                group='service_types')
@@ -267,7 +263,6 @@ class TestLBStatsPollster(_BaseTestLBPollster):
                 'bytes_out': 3,
                 'total_connections': 4}
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def _check_get_samples(self, factory, sample_name, expected_volume,
                            expected_type):
         pollster = factory(self.CONF)

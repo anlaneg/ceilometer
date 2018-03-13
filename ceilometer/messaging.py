@@ -13,7 +13,9 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from oslo_config import cfg
 import oslo_messaging
+from oslo_messaging._drivers import impl_rabbit
 from oslo_messaging.notify import notifier
 from oslo_messaging import serializer as oslo_serializer
 
@@ -23,6 +25,19 @@ TRANSPORTS = {}
 
 def setup():
     oslo_messaging.set_transport_defaults('ceilometer')
+    # NOTE(sileht): When batch is not enabled, oslo.messaging read all messages
+    # in the queue and can consume a lot of memory, that works for rpc because
+    # you never have a lot of message, but sucks for notification. The
+    # default is not changeable on oslo.messaging side. And we can't expose
+    # this option to set set_transport_defaults because it a driver option.
+    # 100 allow to prefetch a lot of messages but limit memory to 1G per
+    # workers in worst case (~ 1M Nova notification)
+    # And even driver options are located in private module, this is not going
+    # to break soon.
+    cfg.set_defaults(
+        impl_rabbit.rabbit_opts,
+        rabbit_qos_prefetch_count=100,
+    )
 
 
 def get_transport(conf, url=None, optional=False, cache=True):
@@ -72,17 +87,3 @@ def get_notifier(transport, publisher_id):
     """Return a configured oslo_messaging notifier."""
     notifier = oslo_messaging.Notifier(transport, serializer=_SERIALIZER)
     return notifier.prepare(publisher_id=publisher_id)
-
-
-def convert_to_old_notification_format(priority, notification):
-    # FIXME(sileht): temporary convert notification to old format
-    # to focus on oslo_messaging migration before refactoring the code to
-    # use the new oslo_messaging facilities
-    notification = notification.copy()
-    notification['priority'] = priority
-    notification.update(notification["metadata"])
-    for k in notification['ctxt']:
-        notification['_context_' + k] = notification['ctxt'][k]
-    del notification['ctxt']
-    del notification['metadata']
-    return notification

@@ -11,10 +11,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-import mock
-from oslo_config import fixture as fixture_config
-
-from ceilometer.agent import manager
+from ceilometer.polling import manager
 from ceilometer import service
 import ceilometer.tests.base as base
 from ceilometer.volume import cinder
@@ -53,6 +50,18 @@ VOLUME_LIST = [
           u'multiattach': False,
           u'source_volid': None,
           u'consistencygroup_id': None,
+          u"volume_image_metadata": {
+              u"checksum": u"17d9daa4fb8e20b0f6b7dec0d46fdddf",
+              u"container_format": u"bare",
+              u"disk_format": u"raw",
+              u"hw_disk_bus": u"scsi",
+              u"hw_scsi_model": u"virtio-scsi",
+              u"image_id": u"f0019ee3-523c-45ab-b0b6-3adc529673e7",
+              u"image_name": u"debian-jessie-scsi",
+              u"min_disk": u"0",
+              u"min_ram": u"0",
+              u"size": u"1572864000"
+          },
           u'os-vol-mig-status-attr:name_id': None,
           u'name': None,
           u'bootable': u'false',
@@ -68,11 +77,24 @@ SNAPSHOT_LIST = [
           u'os-extended-snapshot-attributes:project_id':
               u'6824974c08974d4db864bbaa6bc08303',
           u'size': 1,
+          u'user_id': u'be255bd31eb944578000fc762fde6dcf',
           u'updated_at': u'2016-10-19T07:56:55.000000',
           u'id': u'b1ea6783-f952-491e-a4ed-23a6a562e1cf',
           u'volume_id': u'6f27bc42-c834-49ea-ae75-8d1073b37806',
           u'metadata': {},
           u'created_at': u'2016-10-19T07:56:55.000000',
+          u"volume_image_metadata": {
+              u"checksum": u"17d9daa4fb8e20b0f6b7dec0d46fdddf",
+              u"container_format": u"bare",
+              u"disk_format": u"raw",
+              u"hw_disk_bus": u"scsi",
+              u"hw_scsi_model": u"virtio-scsi",
+              u"image_id": u"f0019ee3-523c-45ab-b0b6-3adc529673e7",
+              u"image_name": u"debian-jessie-scsi",
+              u"min_disk": u"0",
+              u"min_ram": u"0",
+              u"size": u"1572864000"
+          },
           u'name': None})
 ]
 
@@ -105,13 +127,11 @@ BACKUP_LIST = [
 
 
 class TestVolumeSizePollster(base.BaseTestCase):
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(TestVolumeSizePollster, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
-        self.manager = manager.AgentManager(0, self.CONF)
-        self.pollster = cinder.VolumeSizePollster(self.CONF)
+        self.manager = manager.AgentManager(0, conf)
+        self.pollster = cinder.VolumeSizePollster(conf)
 
     def test_volume_size_pollster(self):
         volume_size_samples = list(
@@ -123,16 +143,19 @@ class TestVolumeSizePollster(base.BaseTestCase):
                          volume_size_samples[0].project_id)
         self.assertEqual('d94c18fb-b680-4912-9741-da69ee83c94f',
                          volume_size_samples[0].resource_id)
+        self.assertEqual('f0019ee3-523c-45ab-b0b6-3adc529673e7',
+                         volume_size_samples[0].resource_metadata["image_id"])
+        self.assertEqual('1ae69721-d071-4156-a2bd-b11bb43ec2e3',
+                         volume_size_samples[0].resource_metadata
+                         ["instance_id"])
 
 
 class TestVolumeSnapshotSizePollster(base.BaseTestCase):
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(TestVolumeSnapshotSizePollster, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
-        self.manager = manager.AgentManager(0, self.CONF)
-        self.pollster = cinder.VolumeSnapshotSize(self.CONF)
+        self.manager = manager.AgentManager(0, conf)
+        self.pollster = cinder.VolumeSnapshotSize(conf)
 
     def test_volume_snapshot_size_pollster(self):
         volume_snapshot_size_samples = list(
@@ -142,20 +165,23 @@ class TestVolumeSnapshotSizePollster(base.BaseTestCase):
         self.assertEqual('volume.snapshot.size',
                          volume_snapshot_size_samples[0].name)
         self.assertEqual(1, volume_snapshot_size_samples[0].volume)
+        self.assertEqual('be255bd31eb944578000fc762fde6dcf',
+                         volume_snapshot_size_samples[0].user_id)
         self.assertEqual('6824974c08974d4db864bbaa6bc08303',
                          volume_snapshot_size_samples[0].project_id)
         self.assertEqual('b1ea6783-f952-491e-a4ed-23a6a562e1cf',
                          volume_snapshot_size_samples[0].resource_id)
+        self.assertEqual('f0019ee3-523c-45ab-b0b6-3adc529673e7',
+                         volume_snapshot_size_samples[0].resource_metadata
+                         ["image_id"])
 
 
 class TestVolumeBackupSizePollster(base.BaseTestCase):
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
         super(TestVolumeBackupSizePollster, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
-        self.manager = manager.AgentManager(0, self.CONF)
-        self.pollster = cinder.VolumeBackupSize(self.CONF)
+        self.manager = manager.AgentManager(0, conf)
+        self.pollster = cinder.VolumeBackupSize(conf)
 
     def test_volume_backup_size_pollster(self):
         volume_backup_size_samples = list(

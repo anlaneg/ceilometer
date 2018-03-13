@@ -17,7 +17,6 @@ Tests for VMware vSphere inspector.
 """
 
 import mock
-from oslo_config import fixture as fixture_config
 from oslo_vmware import api
 from oslotest import base
 
@@ -31,13 +30,12 @@ class TestVsphereInspection(base.BaseTestCase):
     def setUp(self):
         super(TestVsphereInspection, self).setUp()
         conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
         api_session = api.VMwareAPISession("test_server", "test_user",
                                            "test_password", 0, None,
                                            create_session=False, port=7443)
         vsphere_inspector.get_api_session = mock.Mock(
             return_value=api_session)
-        self._inspector = vsphere_inspector.VsphereInspector(self.CONF)
+        self._inspector = vsphere_inspector.VsphereInspector(conf)
         self._inspector._ops = mock.MagicMock()
 
     def test_instance_notFound(self):
@@ -93,7 +91,7 @@ class TestVsphereInspection(base.BaseTestCase):
         test_vm_mobj = mock.MagicMock()
         test_vm_mobj.value = "vm-21"
         fake_perf_counter_id = 'fake_perf_counter_id'
-        fake_cpu_util_value = 60
+        fake_cpu_util_value = 60.0
 
         self._inspector._get_vm_mobj_not_power_off_or_raise = mock.MagicMock()
         self._inspector._get_vm_mobj_not_power_off_or_raise.return_value = (
@@ -104,7 +102,7 @@ class TestVsphereInspection(base.BaseTestCase):
         (ops_mock.query_vm_aggregate_stats.
          return_value) = fake_cpu_util_value * 100
         stats = self._inspector.inspect_instance(mock.MagicMock(), None)
-        self.assertEqual(60, stats.cpu_util)
+        self.assertEqual(60.0, stats.cpu_util)
 
     def test_inspect_vnic_rates(self):
 

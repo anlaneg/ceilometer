@@ -18,6 +18,7 @@
 import abc
 import itertools
 import operator
+import threading
 
 from oslo_config import cfg
 from oslo_log import log
@@ -27,7 +28,7 @@ from oslo_utils import excutils
 import six
 import six.moves.urllib.parse as urlparse
 
-from ceilometer.i18n import _, _LE, _LI
+from ceilometer.i18n import _
 from ceilometer import messaging
 from ceilometer import publisher
 from ceilometer.publisher import utils
@@ -84,10 +85,11 @@ class MessagingPublisher(publisher.ConfigPublisherBase):
             'max_queue_length', [1024])[-1])
         self.max_retry = 0
 
+        self.queue_lock = threading.Lock()
         self.local_queue = []
 
         if self.policy in ['default', 'queue', 'drop']:
-            LOG.info(_LI('Publishing policy set to %s'), self.policy)
+            LOG.info('Publishing policy set to %s', self.policy)
         else:
             LOG.warning(_('Publishing policy is unknown (%s) force to '
                           'default'), self.policy)
@@ -123,17 +125,16 @@ class MessagingPublisher(publisher.ConfigPublisherBase):
         self.flush()
 
     def flush(self):
-        # NOTE(sileht):
-        # this is why the self.local_queue is emptied before processing the
-        # queue and the remaining messages in the queue are added to
-        # self.local_queue after in case of another call having already added
-        # something in the self.local_queue
-        queue = self.local_queue
-        self.local_queue = []
-        self.local_queue = (self._process_queue(queue, self.policy) +
-                            self.local_queue)
-        if self.policy == 'queue':
-            self._check_queue_length()
+        with self.queue_lock:
+            queue = self.local_queue
+            self.local_queue = []
+
+        queue = self._process_queue(queue, self.policy)
+
+        with self.queue_lock:
+            self.local_queue = (queue + self.local_queue)
+            if self.policy == 'queue':
+                self._check_queue_length()
 
     def _check_queue_length(self):
         queue_length = len(self.local_queue)
@@ -161,8 +162,8 @@ class MessagingPublisher(publisher.ConfigPublisherBase):
                     return []
                 current_retry += 1
                 if current_retry >= self.max_retry:
-                    LOG.exception(_LE("Failed to retry to send sample data "
-                                      "with max_retry times"))
+                    LOG.exception("Failed to retry to send sample data "
+                                  "with max_retry times")
                     raise
             else:
                 queue.pop(0)
@@ -186,11 +187,49 @@ class MessagingPublisher(publisher.ConfigPublisherBase):
 
 
 class NotifierPublisher(MessagingPublisher):
+    """Publish metering data from notifier publisher.
+
+    The ip address and port number of notifier can be configured in
+    ceilometer pipeline configuration file.
+
+    User can customize the transport driver such as rabbit, kafka and
+    so on. The Notifier uses `sample` method as default method to send
+    notifications.
+
+    This publisher has transmit options such as queue, drop, and
+    retry. These options are specified using policy field of URL parameter.
+    When queue option could be selected, local queue length can be determined
+    using max_queue_length field as well. When the transfer fails with retry
+    option, try to resend the data as many times as specified in max_retry
+    field. If max_retry is not specified, by default the number of retry
+    is 100.
+
+    To enable this publisher, add the following section to the
+    /etc/ceilometer/pipeline.yaml file or simply add it to an existing
+    pipeline::
+
+        meter:
+            - name: meter_notifier
+              meters:
+                - "*"
+              sinks:
+                - notifier_sink
+        sinks:
+            - name: notifier_sink
+              transformers:
+              publishers:
+                - notifier://[notifier_ip]:[notifier_port]?topic=[topic]&
+                  driver=driver&max_retry=100
+
+    """
+
     def __init__(self, conf, parsed_url, default_topic):
         super(NotifierPublisher, self).__init__(conf, parsed_url)
         options = urlparse.parse_qs(parsed_url.query)
-        topic = options.pop('topic', [default_topic])
+        topics = options.pop('topic', [default_topic])
         driver = options.pop('driver', ['rabbit'])[0]
+        self.max_retry = int(options.get('max_retry', [100])[-1])
+
         url = None
         if parsed_url.netloc != '':
             url = urlparse.urlunsplit([driver, parsed_url.netloc,
@@ -201,7 +240,7 @@ class NotifierPublisher(MessagingPublisher):
             messaging.get_transport(self.conf, url),
             driver=self.conf.publisher_notifier.telemetry_driver,
             publisher_id='telemetry.publisher.%s' % self.conf.host,
-            topics=topic,
+            topics=topics,
             retry=self.retry
         )
 

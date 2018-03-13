@@ -16,13 +16,11 @@
 """Tests for the compute pollsters.
 """
 
-import mock
-from oslo_config import fixture as fixture_config
 from oslotest import base
 import six
 
-from ceilometer.agent import manager
 from ceilometer.compute.pollsters import util
+from ceilometer.polling import manager
 from ceilometer import service
 
 
@@ -44,10 +42,8 @@ class FauxInstance(object):
 
 class TestLocationMetadata(base.BaseTestCase):
 
-    @mock.patch('ceilometer.pipeline.setup_pipeline', mock.MagicMock())
     def setUp(self):
-        conf = service.prepare_service([], [])
-        self.CONF = self.useFixture(fixture_config.Config(conf)).conf
+        self.CONF = service.prepare_service([], [])
         self.manager = manager.AgentManager(0, self.CONF)
         super(TestLocationMetadata, self).setUp()
 
